@@ -1,7 +1,7 @@
 #pragma once
 #include <WinSock2.h>
 #include <string>
-#include "Protocol.h"
+#include "../Common/Protocol.h"
 
 enum Overlap_Operation {
 	OPERATION_RECV = 1

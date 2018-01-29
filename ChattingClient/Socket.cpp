@@ -26,10 +26,10 @@ bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 	}
 
 	hWnd = mainWindow;
-	clientSocket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
-
+	clientSocket = ::WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
+	
 	SOCKADDR_IN ServerAddr;
-	ZeroMemory(&ServerAddr, sizeof(SOCKADDR_IN));
+	::ZeroMemory(&ServerAddr, sizeof(SOCKADDR_IN));
 	ServerAddr.sin_family = AF_INET;
 	ServerAddr.sin_port = htons(MY_SERVER_PORT);
 	ServerAddr.sin_addr.s_addr = inet_addr(serverIP);
@@ -37,7 +37,7 @@ bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 	int Result = WSAConnect(clientSocket, (sockaddr *)&ServerAddr, sizeof(ServerAddr), nullptr, nullptr, nullptr, nullptr);
 	if (0 != Result)
 	{
-		MessageBox(mainWindow, "WSAConnect Error!!", "Error!!", MB_OK);
+		::MessageBox(mainWindow, "WSAConnect Error!!", "Error!!", MB_OK);
 		if (clientSocket) 
 			closesocket(clientSocket);
 
@@ -61,7 +61,7 @@ void Socket::ReadPacket(SOCKET sock)
 	int ret = WSARecv(sock, &recvWsaBuf, 1, &iobyte, &ioflag, nullptr, nullptr);
 	if (0 != ret)
 	{
-		MessageBox(hWnd, "WSARecv Error!", "Error!!", MB_OK);
+		::MessageBox(hWnd, "WSARecv Error!", "Error!!", MB_OK);
 		return;
 	}
 
@@ -98,7 +98,7 @@ void Socket::SendPacket(unsigned char* packet)
 	int ret = WSASend(clientSocket, &sendWsaBuf, 1, &iobyte, 0, NULL, NULL);
 	if (0 != ret)
 	{
-		MessageBox(hWnd, "WSASend Error!", "Error!!", MB_OK);
+		::MessageBox(hWnd, "WSASend Error!", "Error!!", MB_OK);
 	}
 }
 

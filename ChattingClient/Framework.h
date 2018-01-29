@@ -2,7 +2,7 @@
 #include <windows.h>
 #include <string>
 #include <list>
-#include "Protocol.h"
+#include "../Common/Protocol.h"
 
 class Framework
 {
@@ -31,6 +31,7 @@ public:
 
 	WNDPROC GetOldInputProc() const { return oldInputProc; }
 	HWND	GetEditInput() const { return editInput; }
+	Socket& GetUserSocket() { return userSocket; }
 
 private:
 	Framework();
@@ -72,7 +73,7 @@ private:
 
 	WNDPROC				oldInputProc;
 
-
+	Socket				userSocket;
 	std::string			userName;
 	std::string			userChannel;
 	std::string			currentChannelMaster;

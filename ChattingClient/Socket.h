@@ -1,33 +1,25 @@
 #pragma once
 #include <winsock2.h>
 #include <windows.h>
-#include "Protocol.h"
+#include "../Common/Protocol.h"
 
 class Socket
 {
 public:
+	Socket();
+	~Socket();
+
 	static const int		WM_SOCKET = WM_USER + 1;
 
-	static Socket* GetInstance()
- 	{
-		static Socket soc;
-		return &soc;
-	}
-
-	bool Initialize(HWND mainWindow, const char* serverIP);
-	bool IsInitialized() const { return isInitialized;	}
+	bool		Initialize(HWND mainWindow, const char* serverIP);
+	bool		IsInitialized() const { return isInitialized;	}
+	WSABUF&		GetSendWsaBuf() { return sendWsaBuf; }
 
 	void ReadPacket(SOCKET sock);
 	void SendPacket(unsigned char* packet);
 
 	void ProcessPacket(unsigned char* packet);
 
-
-	WSABUF*		GetSendWsaBuf() { return &sendWsaBuf; }
-
-private:
-	Socket();
-	~Socket();
 
 private:
 	HWND			hWnd;

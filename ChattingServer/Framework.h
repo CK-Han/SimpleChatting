@@ -7,7 +7,7 @@
 #include <vector>
 #include <map>
 #include <string>
-#include "Protocol.h"
+#include "../Common/Protocol.h"
 #include "Client.h"
 #include "Channel.h"
 

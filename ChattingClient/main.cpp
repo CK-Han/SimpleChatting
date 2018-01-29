@@ -4,8 +4,8 @@
 HINSTANCE gInstance;
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance
-	, LPSTR lpszCmdParam, int nCmdShow)
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/
+	, LPSTR /*lpszCmdParam*/, int nCmdShow)
 {
 	HWND hWnd;
 	MSG msg;
@@ -43,14 +43,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static HWND editIP, buttonIP;
 	static const int ID_SUBMITIP = 1010;
-	static char ipAddress[32], name[MAX_USERNAME_LENGTH];
+	static char ipAddress[32];
 
 	switch (msg) 
 	{
 	case WM_CREATE:
-		editIP = CreateWindow("edit", "127.0.0.1", WS_CHILD | WS_VISIBLE | WS_BORDER |
+		editIP = ::CreateWindow("edit", "127.0.0.1", WS_CHILD | WS_VISIBLE | WS_BORDER |
 			ES_AUTOHSCROLL, 10, 10, 200, 25, hWnd, 0, gInstance, NULL);
-		buttonIP = CreateWindow("button", "제출", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+		buttonIP = ::CreateWindow("button", "제출", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
 			220, 10, 50, 25, hWnd, (HMENU)ID_SUBMITIP, gInstance, NULL);
 		break;
 		
@@ -63,7 +63,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
 		case ID_SUBMITIP:
 			::GetWindowText(editIP, ipAddress, 32);
-			bool isConnect = Socket::GetInstance()->Initialize(hWnd, ipAddress);
+			bool isConnect = Framework::GetInstance()->GetUserSocket().Initialize(hWnd, ipAddress);
 			if(isConnect)
 			{
 				Framework::GetInstance()->Initialize(hWnd, gInstance);	

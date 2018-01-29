@@ -147,8 +147,8 @@
     <ClCompile Include="Socket.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\Common\Protocol.h" />
     <ClInclude Include="Framework.h" />
-    <ClInclude Include="Protocol.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="Socket.h" />
   </ItemGroup>

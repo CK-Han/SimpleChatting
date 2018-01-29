@@ -86,30 +86,30 @@ void Framework::Initialize(HWND hWnd, HINSTANCE instance)
 		::DestroyWindow(textCommands);
 	}
 
-	editInput = ::CreateWindow(TEXT("edit"), "로그인 전 상태입니다. 사용하고자 하는 아이디 입력 후 Enter를 눌러주세요. 공백, 특수문자 불가"
+	editInput = ::CreateWindow("edit", "로그인 전 상태입니다. 사용하고자 하는 아이디 입력 후 Enter를 눌러주세요. 공백, 특수문자 불가"
 		, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT
 		, rect.left + BLANK, rect.bottom - BLANK - CHAT_HEIGHT, CHAT_WIDTH, CHAT_HEIGHT
 		, mainWindow, 0, mainInstance, NULL);
 
 	oldInputProc = (WNDPROC)SetWindowLong(editInput, GWL_WNDPROC, (LONG)EditSubProc);
 
-	listLog = ::CreateWindow(TEXT("listbox"), NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOVSCROLL | WS_VSCROLL | LBS_DISABLENOSCROLL
+	listLog = ::CreateWindow("listbox", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOVSCROLL | WS_VSCROLL | LBS_DISABLENOSCROLL
 		, rect.left + BLANK, rect.top + BLANK, CHAT_WIDTH, LOG_HEIGHT
 		, mainWindow, 0, mainInstance, NULL);
 
-	editChannelName = ::CreateWindow(TEXT("edit"), NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_CENTER | ES_READONLY
+	editChannelName = ::CreateWindow("edit", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_CENTER | ES_READONLY
 		, rect.right - BLANK - CHANNEL_WIDTH, rect.bottom - BLANK - USERS_HEIGHT - BLANK - CHAT_HEIGHT, CHANNEL_WIDTH, CHAT_HEIGHT
 		, mainWindow, 0, mainInstance, NULL);
 	
-	listUsers = ::CreateWindow(TEXT("listbox"), NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOVSCROLL | WS_VSCROLL | LBS_DISABLENOSCROLL
+	listUsers = ::CreateWindow("listbox", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOVSCROLL | WS_VSCROLL | LBS_DISABLENOSCROLL
 		, rect.right - BLANK - CHANNEL_WIDTH, rect.bottom - BLANK - USERS_HEIGHT, CHANNEL_WIDTH, USERS_HEIGHT
 		, mainWindow, 0, mainInstance, NULL);
 
-	textCommands = ::CreateWindow(TEXT("static")
-		, TEXT("귓속말     : /w ID 할말 \n"
+	textCommands = ::CreateWindow("static"
+		, "귓속말     : /w ID 할말 \n"
 			"채널목록 : /channels\n"
 			"채널변경 : /channel CHANNELNAME\n"
-			"강퇴         : /kick ID"), WS_CHILD | WS_VISIBLE,
+			"강퇴         : /kick ID", WS_CHILD | WS_VISIBLE,
 		rect.right - BLANK - CHANNEL_WIDTH, BLANK, CHANNEL_WIDTH, COMMAND_HEIGHT
 		, hWnd, 0, mainInstance, NULL);
 
@@ -131,7 +131,7 @@ void Framework::ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
 		switch (WSAGETSELECTEVENT(lParam))
 		{
 		case FD_READ:
-			Socket::GetInstance()->ReadPacket((SOCKET)wParam);
+			userSocket.ReadPacket((SOCKET)wParam);
 			break;
 		case FD_CLOSE:
 			closesocket((SOCKET)wParam);
@@ -439,19 +439,19 @@ void Framework::RequestLogin(const std::string& id)
 		}
 	}
 
-	packet_login* my_packet = reinterpret_cast<packet_login *>(Socket::GetInstance()->GetSendWsaBuf()->buf);
+	packet_login* my_packet = reinterpret_cast<packet_login *>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_login));
 	my_packet->Size = sizeof(packet_login);
 	my_packet->Type = PACKET_LOGIN;
 	my_packet->Created = false;
 	std::memcpy(&(my_packet->User), id.c_str(), id.size());
 
-	Socket::GetInstance()->SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
 }
 
 void Framework::RequestWhisper(const std::string& listener, const std::string& chat)
 {
-	packet_chatting* my_packet = reinterpret_cast<packet_chatting *>(Socket::GetInstance()->GetSendWsaBuf()->buf);
+	packet_chatting* my_packet = reinterpret_cast<packet_chatting *>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_chatting));
 	my_packet->Size = sizeof(packet_chatting);
 	my_packet->Type = PACKET_CHATTING;
@@ -461,29 +461,29 @@ void Framework::RequestWhisper(const std::string& listener, const std::string& c
 	std::memcpy(&(my_packet->Listner), listener.c_str(), listener.size());
 	std::memcpy(&(my_packet->Chat), chat.c_str(), chat.size());
 
-	Socket::GetInstance()->SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
 }
 
 void Framework::RequestChannelList()
 {
 	//client to server - Size, Type만 전송
-	packet_channel_list* my_packet = reinterpret_cast<packet_channel_list *>(Socket::GetInstance()->GetSendWsaBuf()->buf);
+	packet_channel_list* my_packet = reinterpret_cast<packet_channel_list *>(userSocket.GetSendWsaBuf().buf);
 	my_packet->Size = sizeof(my_packet->Size) + sizeof(my_packet->Type);
 	my_packet->Type = PACKET_CHANNEL_LIST;
 
-	Socket::GetInstance()->SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
 }
 
 void Framework::RequestChannelChange(const std::string& channelName)
 {
 	//client to server - 채널이름만 초기화
-	packet_channel_enter* my_packet = reinterpret_cast<packet_channel_enter *>(Socket::GetInstance()->GetSendWsaBuf()->buf);
+	packet_channel_enter* my_packet = reinterpret_cast<packet_channel_enter *>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_channel_enter));
 	my_packet->Size = sizeof(packet_channel_enter);
 	my_packet->Type = PACKET_CHANNEL_ENTER;
 	std::memcpy(&(my_packet->ChannelName), channelName.c_str(), channelName.size());
 
-	Socket::GetInstance()->SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
 }
 
 void Framework::RequestKick(const std::string& target)
@@ -496,7 +496,7 @@ void Framework::RequestKick(const std::string& target)
 		return;
 	}
 
-	packet_kick_user* my_packet = reinterpret_cast<packet_kick_user *>(Socket::GetInstance()->GetSendWsaBuf()->buf);
+	packet_kick_user* my_packet = reinterpret_cast<packet_kick_user *>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_kick_user));
 	my_packet->Size = sizeof(packet_kick_user);
 	my_packet->Type = PACKET_KICK_USER;
@@ -504,12 +504,12 @@ void Framework::RequestKick(const std::string& target)
 	std::memcpy(&(my_packet->Kicker), userName.c_str(), userName.size());
 	std::memcpy(&(my_packet->Channel), userChannel.c_str(), userChannel.size());
 
-	Socket::GetInstance()->SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
 }
 
 void Framework::RequestChatting(const std::string& chat)
 {
-	packet_chatting* my_packet = reinterpret_cast<packet_chatting*>(Socket::GetInstance()->GetSendWsaBuf()->buf);
+	packet_chatting* my_packet = reinterpret_cast<packet_chatting*>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_chatting));
 	my_packet->Size = sizeof(packet_chatting);
 	my_packet->Type = PACKET_CHATTING;
@@ -518,5 +518,5 @@ void Framework::RequestChatting(const std::string& chat)
 	std::memcpy(&(my_packet->Talker), userName.c_str(), userName.size());
 	std::memcpy(&(my_packet->Chat), chat.c_str(), chat.size());
 
-	Socket::GetInstance()->SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
 }
