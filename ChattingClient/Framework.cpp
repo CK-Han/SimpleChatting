@@ -218,6 +218,40 @@ void Framework::ProcessInput()
 }
 
 
+bool Framework::IsValidUserName(const std::string& id) const
+{
+	static const unsigned short KOREAN_CODE_BEGIN = 44032;
+	static const unsigned short KOREAN_CODE_END = 55199;
+
+	bool isAlphaNumber = true;
+	for (auto iter = id.cbegin(); iter != id.cend(); ++iter)
+	{
+		char ch = *iter;
+		if (ch < 0)
+		{
+			if ((++iter) != id.cend())
+			{
+				std::string strKor(1, ch);
+				strKor += *iter;
+
+				wchar_t kor;
+				int resConvert = ::MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, strKor.c_str(), 2, &kor, 1);
+				if (resConvert != 1
+					|| kor < KOREAN_CODE_BEGIN
+					|| KOREAN_CODE_END < kor)
+					return false;
+			}
+			else
+				return false;
+		}
+		else if (false == std::isalnum(ch))
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
 
 void Framework::SeekLastAddedCursor(HWND listBox)
 {
@@ -429,14 +463,10 @@ void Framework::RequestLogin(const std::string& id)
 		return;
 	}
 
-	std::string specRegx = "[~!@\#$%^&*\()\ = +| \\ / :; ? ""<>']";
-	for (auto ch : id)
+	if (false == IsValidUserName(id))
 	{
-		if (specRegx.find(ch) != specRegx.npos)
-		{
-			MessageBox(mainWindow, "사용 불가능한 아이디입니다.", "생성 불가", MB_OK);
-			return;
-		}
+		MessageBox(mainWindow, "사용 불가능한 아이디입니다.", "생성 불가", MB_OK);
+		return;
 	}
 
 	packet_login* my_packet = reinterpret_cast<packet_login *>(userSocket.GetSendWsaBuf().buf);

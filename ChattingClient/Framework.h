@@ -37,6 +37,7 @@ private:
 	Framework();
 	~Framework();
 
+	bool IsValidUserName(const std::string& id) const;
 	void SeekLastAddedCursor(HWND listBox);
 
 	void ProcessSystemMessage(unsigned char* packet);
