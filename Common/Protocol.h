@@ -8,7 +8,7 @@
 #define MAX_USERNAME_LENGTH			16
 #define MAX_USERNAME_SENDED			200
 #define MAX_CHANNEL_USERS			200
-#define MAX_PUBLIC_CHANNEL_COUNT	12
+#define MAX_PUBLIC_CHANNEL_COUNT	16
 #define MAX_CHANNELNAME_LENGTH		32
 #define MAX_CHATTING_SIZE			128
 
@@ -70,7 +70,7 @@ struct packet_channel_list
 	unsigned short	Size;
 	unsigned char	Type;
 
-	char			PublicChannelCount;
+	int				PublicChannelCount;
 	int				CustomChannelCount;
 
 	char			PublicChannelNames[MAX_CHANNELNAME_LENGTH * (MAX_PUBLIC_CHANNEL_COUNT + 1)];

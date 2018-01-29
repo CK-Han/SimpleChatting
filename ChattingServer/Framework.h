@@ -51,6 +51,7 @@ private:
 
 	void Initialize();
 
+	
 	int				GetRandomPublicChannelIndex() const;
 	void			BroadcastToChannel(const std::string& channelName, unsigned char* packet);
 

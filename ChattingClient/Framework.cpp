@@ -169,9 +169,8 @@ void Framework::ProcessInput()
 	{
 	case CommandType::WHISPER:
 	{
-		size_t chatBegin = str.find_first_of(tokens[2]);
-		if (chatBegin != str.npos)
-			RequestWhisper(tokens[1], str.substr(chatBegin));
+		//4 -> '/w ID ' ¿¡¼­ °ø¹é°ú /wÀÇ ±æÀÌ
+		RequestWhisper(tokens[1], str.substr(4 + userName.size()));
 		break;
 	}
 	
@@ -328,6 +327,7 @@ void Framework::ProcessPacket(unsigned char* packet)
 	}
 }
 
+
 void Framework::ProcessSystemMessage(unsigned char* packet)
 {
 	packet_system* my_packet = reinterpret_cast<packet_system*>(packet);
@@ -437,13 +437,13 @@ void Framework::ProcessChatting(unsigned char* packet)
 {
 	packet_chatting* my_packet = reinterpret_cast<packet_chatting*>(packet);
 	
-	std::string chatMsg(my_packet->Talker);
+	std::string chatMsg;
 	if (my_packet->IsWhisper == true)
 	{
 		if (my_packet->Talker == userName)
-			chatMsg += " ´Ô¿¡°Ô : ";
+			chatMsg += (std::string(my_packet->Listner) + " ´Ô¿¡°Ô : ");
 		else
-			chatMsg += " ´ÔÀÇ ±Ó¼Ó¸» : ";
+			chatMsg += (std::string(my_packet->Talker) + " ´ÔÀÇ ±Ó¼Ó¸» : ");
 	}
 	else
 		chatMsg += " : ";

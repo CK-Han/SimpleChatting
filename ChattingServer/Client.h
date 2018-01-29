@@ -10,10 +10,10 @@ enum Overlap_Operation {
 
 struct Overlap_Exp
 {
-	WSAOVERLAPPED Original_Overlap;
+	::WSAOVERLAPPED Original_Overlap;
 	int Operation;
 	WSABUF WsaBuf;
-	unsigned char Iocp_buffer[MAX_BUFF_SIZE];
+	unsigned char Iocp_Buffer[MAX_BUFF_SIZE];
 };
 
 struct Client
@@ -30,7 +30,8 @@ struct Client
 	std::string			ChannelName;
 
 	Client()
-		: ClientSocket(INVALID_SOCKET)
+		: Serial(-1)
+		, ClientSocket(INVALID_SOCKET)
 		, IsLogin(false)
 		, PacketSize(0)
 		, PreviousSize(0)

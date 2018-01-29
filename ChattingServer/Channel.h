@@ -13,7 +13,7 @@ public:
 	virtual void	Enter(Client* client);
 	virtual void	Exit(Client* client);
 	
-	int								GetUserCount() const { return clientsInChannel.size(); }
+	unsigned int					GetUserCount() const { return clientsInChannel.size(); }
 	std::string						GetChannelName() const { return channelName; }
 	const std::list<Client*>&		GetClientsInChannel() const { return clientsInChannel; }
 	std::string						GetChannelMaster() const { return channelMaster; }

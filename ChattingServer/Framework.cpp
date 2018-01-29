@@ -16,6 +16,9 @@ Framework::Framework()
 	, isShutdown(false)
 	, validSerial(0)
 {
+	WSADATA	wsadata;
+	::WSAStartup(MAKEWORD(2, 2), &wsadata);
+
 	Initialize();
 }
 
@@ -32,14 +35,12 @@ Framework::~Framework()
 
 void Framework::Initialize()
 {
-	WSADATA	wsadata;
-	::WSAStartup(MAKEWORD(2, 2), &wsadata);
-
 	for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
 		workerThreads.emplace_back(new std::thread(WorkerThreadStart));
 
 	acceptThread = std::unique_ptr<std::thread>(new std::thread(AcceptThreadStart));
 
+	//MAX_PUBLIC_CHANNEL_COUNT
 	publicChannels.emplace_back("FreeChannel");
 	publicChannels.emplace_back("ForTeenagers");
 	publicChannels.emplace_back("For20s");
@@ -48,6 +49,15 @@ void Framework::Initialize()
 	publicChannels.emplace_back("AboutStudy");
 	publicChannels.emplace_back("AboutHobby");
 	publicChannels.emplace_back("AboutExcercise");
+	
+	publicChannels.emplace_back("Sample1");
+	publicChannels.emplace_back("Sample2");
+	publicChannels.emplace_back("Sample3");
+	publicChannels.emplace_back("Sample4");
+	publicChannels.emplace_back("Sample5");
+	publicChannels.emplace_back("Sample6");
+	publicChannels.emplace_back("Sample7");
+	publicChannels.emplace_back("Sample8");
 }
 	 
 
@@ -66,9 +76,9 @@ void Framework::SendPacket(int serial, unsigned char* packet) const
 	::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
 
 	overlapExp->Operation = OPERATION_SEND;
-	overlapExp->WsaBuf.buf = reinterpret_cast<CHAR *>(overlapExp->Iocp_buffer);
+	overlapExp->WsaBuf.buf = reinterpret_cast<CHAR *>(overlapExp->Iocp_Buffer);
 	overlapExp->WsaBuf.len = GetPacketSize(packet);
-	memcpy(overlapExp->Iocp_buffer, packet, overlapExp->WsaBuf.len);
+	memcpy(overlapExp->Iocp_Buffer, packet, overlapExp->WsaBuf.len);
 
 	int ret = WSASend(clientIter->second.ClientSocket, &overlapExp->WsaBuf, 1, NULL, 0,
 		&overlapExp->Original_Overlap, NULL);
@@ -122,13 +132,19 @@ void Framework::ProcessPacket(int serial, unsigned char* packet)
 
 void Framework::ProcessUserClose(int serial)
 {
-	if (clients[serial].IsLogin == true)
+	auto clientIter = clients.find(serial);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "ProcessUserClose() - Invalid serial number" << std::endl;
+		return;
+	}
+	Client& client = clientIter->second;
+
+	if (client.IsLogin == true)
 	{	//로그인 되었다 -> 채널에 존재하므로 채널을 떠나야 한다.
-		Channel* channel = FindChannelFromName(clients[serial].ChannelName);
+		Channel* channel = FindChannelFromName(client.ChannelName);
 		if(channel)
-		{
 			HandleUserLeave(serial, false, channel);
-		}
 	}
 	
 	std::unique_lock<std::mutex> ul(mLock);
@@ -137,23 +153,26 @@ void Framework::ProcessUserClose(int serial)
 
 void Framework::ProcessLogin(int serial, unsigned char* packet)
 {
+	auto clientIter = clients.find(serial);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "ProcessUserClose() - Invalid serial number" << std::endl;
+		return;
+	}
+	Client& client = clientIter->second;
+
 	packet_login* from_packet = reinterpret_cast<packet_login*>(packet);
 	bool isDuplicated = false;
 
 	std::unique_lock<std::mutex> ul(mLock);
-	for (auto& client : clients)
-	{
-		if (client.second.UserName == from_packet->User)
-		{
-			isDuplicated = true;
-			break;
-		}
-	}
+
+	if (nullptr != FindClientFromName(from_packet->User))
+		isDuplicated = true;
 	
 	if(isDuplicated == false) //선점 후 락 해제
 	{
-		clients[serial].UserName = from_packet->User;
-		clients[serial].IsLogin = true;
+		client.UserName = from_packet->User;
+		client.IsLogin = true;
 	}
 	ul.unlock();
 
@@ -175,12 +194,19 @@ void Framework::ProcessLogin(int serial, unsigned char* packet)
 
 void Framework::ProcessChannelList(int serial)
 {
+	auto clientIter = clients.find(serial);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "ProcessChannelList() - Invalid serial number" << std::endl;
+		return;
+	}
+
 	packet_channel_list channelList_packet;
 	::ZeroMemory(&channelList_packet, sizeof(channelList_packet));
 	//공개채널은 불변으로 락이 필요치 않으나 커스텀채널은 가변으로 개수 확인시 락이 필요할 것이다.
 	channelList_packet.Size = sizeof(packet_channel_list);
 	channelList_packet.Type = PACKET_CHANNEL_LIST;
-	channelList_packet.PublicChannelCount = static_cast<char>(publicChannels.size());
+	channelList_packet.PublicChannelCount = publicChannels.size();
 	std::string publicChannelNames;
 	for (auto& name : publicChannels)
 	{
@@ -197,52 +223,55 @@ void Framework::ProcessChannelList(int serial)
 
 void Framework::ProcessChatting(int serial, unsigned char* packet)
 {
+	auto clientIter = clients.find(serial);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "ProcessChatting() - Invalid serial number" << std::endl;
+		return;
+	}
+	Client& client = clientIter->second;
+
 	packet_chatting* from_packet = reinterpret_cast<packet_chatting*>(packet);
 	
 	if (from_packet->IsWhisper == false)
 	{
-		BroadcastToChannel(clients[serial].ChannelName, packet);
+		BroadcastToChannel(client.ChannelName, packet);
 	}
 	else
 	{
-		bool isWhisperLogin = false;
-		
-		for (auto& client : clients)
+		Client* listener = FindClientFromName(from_packet->Listner);
+		if (nullptr != listener)
 		{
-			if (client.second.UserName == from_packet->Listner)
-			{
-				isWhisperLogin = true;
-				SendPacket(serial, packet);
-				SendPacket(client.second.Serial, packet);
-				break;
-			}
+			SendPacket(serial, packet);
+			SendPacket(listener->Serial, packet);
 		}
-
-		if (isWhisperLogin == false)
-		{
-			std::string whisperFail("***System*** 해당 유저는 접속중이 아닙니다.");
-			SendSystemMessage(serial, whisperFail);
-		}
+		else
+			SendSystemMessage(serial, "***System*** 해당 유저는 접속중이 아닙니다.");
 	}
 }
 
 void Framework::ProcessKick(int serial, unsigned char* packet)
 {
+	auto clientIter = clients.find(serial);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "ProcessKick() - Invalid serial number" << std::endl;
+		return;
+	}
+
 	packet_kick_user* from_packet = reinterpret_cast<packet_kick_user*>(packet);
 	
 	Client* target = FindClientFromName(from_packet->Target);
 	if (target == nullptr)
 	{
-		std::string msg("***System*** 해당 유저는 접속중이 아닙니다.");
-		SendSystemMessage(serial, msg);
+		SendSystemMessage(serial, "***System*** 해당 유저는 접속중이 아닙니다.");
 		return;
 	}
 
 	Channel* channel = FindChannelFromName(from_packet->Channel);
 	if (channel == nullptr)
 	{
-		std::string msg("***System*** 요청에 문제가 발생하였습니다.");
-		SendSystemMessage(serial, msg);
+		SendSystemMessage(serial, "***System*** 요청에 문제가 발생하였습니다.");
 
 		std::cout << "ProcessKick() - cannot find channel\n";
 		return;
@@ -251,15 +280,13 @@ void Framework::ProcessKick(int serial, unsigned char* packet)
 	if (channel->GetChannelMaster() != from_packet->Kicker
 		|| target->ChannelName != from_packet->Channel)
 	{
-		std::string msg("***System*** 방장이 아니거나, 같은 채널이 아닙니다.");
-		SendSystemMessage(serial, msg);
+		SendSystemMessage(serial, "***System*** 방장이 아니거나, 같은 채널이 아닙니다.");
 		return;
 	}
 
 	if (target->Serial == serial)
 	{
-		std::string msg("***System*** 본인을 강퇴할 수 없습니다.");
-		SendSystemMessage(serial, msg);
+		SendSystemMessage(serial, "***System*** 본인을 강퇴할 수 없습니다.");
 		return;
 	}
 
@@ -270,22 +297,27 @@ void Framework::ProcessKick(int serial, unsigned char* packet)
 
 void Framework::ProcessChannelChange(int serial, unsigned char* packet)
 {
+	auto clientIter = clients.find(serial);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "ProcessUserClose() - Invalid serial number" << std::endl;
+		return;
+	}
+	Client& client = clientIter->second;
+
 	packet_channel_enter* from_packet = reinterpret_cast<packet_channel_enter*>(packet);
 	
 	std::unique_lock<std::mutex> ul(mLock);
 	bool isChannelChanged = false;
 	Channel* channel = FindChannelFromName(from_packet->ChannelName);
-	Channel* prevChannel = FindChannelFromName(clients[serial].ChannelName);
+	Channel* prevChannel = FindChannelFromName(client.ChannelName);
 	if (channel)
 	{
 		ul.unlock();
 
 		isChannelChanged = ConnectToChannel(serial, from_packet->ChannelName);
 		if (isChannelChanged == false)
-		{
-			std::string msg("***System*** 채널 최대수용인원을 초과하였습니다.");
-			SendSystemMessage(serial, msg);
-		}
+			SendSystemMessage(serial, "***System*** 채널 최대수용인원을 초과하였습니다.");
 	}
 	else //새 커스텀채널 생성
 	{
@@ -307,18 +339,30 @@ void Framework::ProcessChannelChange(int serial, unsigned char* packet)
 ////////////////////////////////////////////////////////////////////////////
 //Private Functions
 
+//return [-1, MAX_PUBLIC_CHANNEL_COUNT), '-1' means public channels are full
 int Framework::GetRandomPublicChannelIndex() const
 {
-	const int publicChannelCount = publicChannels.size();
+	const unsigned int publicChannelCount = publicChannels.size();
 	static std::uniform_int_distribution<int> uid(0, publicChannelCount - 1);
 	static std::default_random_engine dre;
 
+	std::vector<bool> channelIsFull(publicChannelCount, false);
 	int randSlot = -1;
+	size_t channelFullCount = 0;
+
 	while (true)
 	{
 		randSlot = uid(dre);
 		if (publicChannels[randSlot].GetUserCount() < publicChannelCount)
 			return randSlot;
+		else if(channelIsFull[randSlot] == false)
+		{
+			channelIsFull[randSlot] = true;
+			++channelFullCount;
+
+			if (channelFullCount == publicChannelCount)
+				return -1;
+		}
 	}
 }
 
@@ -335,6 +379,14 @@ void Framework::BroadcastToChannel(const std::string& channelName, unsigned char
 
 void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 {
+	auto clientIter = clients.find(leaver);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "HandleUserLeave() - Invalid serial number" << std::endl;
+		return;
+	}
+	Client& client = clientIter->second;
+
 	if (channel == nullptr)
 	{
 		std::cout << "HandleUserLeave() - channel is nullptr\n";
@@ -345,20 +397,20 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 	std::string channelName = channel->GetChannelName();
 
 	std::unique_lock<std::mutex> ul(mLock);
-	channel->Exit(&clients[leaver]);
-	if (clients[leaver].UserName == channel->GetChannelMaster())
-	{	//방장존재, 즉 커스텀채널인 경우/ dynamic_cast가 필요없다
-		auto toDelete = std::find_if(customChannels.cbegin(), customChannels.cend(),
+	channel->Exit(&client);
+	if (client.UserName == channel->GetChannelMaster())
+	{	//방장존재, 즉 커스텀채널인 경우 (dynamic_cast가 필요없다!)
+		auto toDeleteIter = std::find_if(customChannels.cbegin(), customChannels.cend(),
 			[&channelName](const Channel& ch)
 		{
 			return ch.GetChannelName() == channelName;
 		});
 
-		if (toDelete != customChannels.cend())
+		if (toDeleteIter != customChannels.cend())
 		{
 			if (channel->GetUserCount() == 0)
 			{
-				customChannels.erase(toDelete);
+				customChannels.erase(toDeleteIter);
 			}
 			else
 			{	//리스트에서 가장 오래 지낸 유저에게 방장을 넘긴다.
@@ -374,14 +426,12 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 	::ZeroMemory(&leave_packet, sizeof(leave_packet));
 	leave_packet.Size = sizeof(leave_packet);
 	leave_packet.Type = PACKET_USER_LEAVE;
-	std::memcpy(&leave_packet.User, clients[leaver].UserName.c_str(), clients[leaver].UserName.size());
+	std::memcpy(&leave_packet.User, client.UserName.c_str(), client.UserName.size());
 	leave_packet.IsKicked = isKicked;
 
 	if (isKicked)
-	{
-		std::string msg("***System*** 방장에 의해 강퇴당하였습니다. 공개채널로 이동합니다.");
-		SendSystemMessage(leaver, msg);
-	}
+		SendSystemMessage(leaver, "***System*** 방장에 의해 강퇴당하였습니다. 공개채널로 이동합니다.");
+	
 	BroadcastToChannel(channelName, reinterpret_cast<unsigned char*>(&leave_packet));
 
 	if (isMasterChanged)
@@ -403,13 +453,26 @@ void Framework::ConnectToRandomPublicChannel(int serial)
 	while (isConnected == false)
 	{
 		int randSlot = GetRandomPublicChannelIndex();
-		isConnected = ConnectToChannel(serial, publicChannels[randSlot].GetChannelName());
+		if (randSlot == -1)
+		{	//모든 공개채널이 가득 찬 상태, 스타크래프트1 배틀넷의 Void 채널과 유사
+			SendSystemMessage(serial, "***System*** 모든 공개채널에 인원이 가득 찼습니다.");
+			return;
+		}
+		else
+			isConnected = ConnectToChannel(serial, publicChannels[randSlot].GetChannelName());
 	}
 }
 
 bool Framework::ConnectToChannel(int serial, const std::string& channelName)
 {
-	Client& client = clients[serial];
+	auto clientIter = clients.find(serial);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "ConnectToChannel() - Invalid serial number" << std::endl;
+		return false;
+	}
+	Client& client = clientIter->second;
+
 	Channel* channel = FindChannelFromName(channelName);
 	if (channel == nullptr)
 	{
@@ -425,7 +488,7 @@ bool Framework::ConnectToChannel(int serial, const std::string& channelName)
 		ul.unlock();
 	}
 	else
-		return false; //unlock 명시할 필요 X
+		return false;
 	
 	packet_newface_enter newface_packet;
 	::ZeroMemory(&newface_packet, sizeof(newface_packet));
@@ -457,7 +520,8 @@ bool Framework::ConnectToChannel(int serial, const std::string& channelName)
 
 	packet_channel_users users_packet;
 	::ZeroMemory(&users_packet, sizeof(users_packet));
-	users_packet.Size = sizeof(users_packet);
+	users_packet.Size = sizeof(users_packet.Size) + sizeof(users_packet.Type) + sizeof(users_packet.UserCountInPacket)
+						+ sizeof(users_packet.ChannelName) + static_cast<unsigned short>(userNames.size());	
 	users_packet.Type = PACKET_CHANNEL_USERS;
 	std::memcpy(&users_packet.ChannelName, client.ChannelName.c_str(), client.ChannelName.size());
 	users_packet.UserCountInPacket = userCount;
@@ -528,7 +592,6 @@ namespace
 		::bind(acceptSocket, reinterpret_cast<sockaddr *>(&listenAddr), sizeof(listenAddr));
 		::listen(acceptSocket, 10);
 
-		// listen
 		while (false == framework->IsShutDown())
 		{
 			SOCKADDR_IN clientAddr;
@@ -551,8 +614,8 @@ namespace
 			client.Serial = newSerial;
 			client.ClientSocket = newClientSocket;
 			client.RecvOverlap.Operation = OPERATION_RECV;
-			client.RecvOverlap.WsaBuf.buf = reinterpret_cast<CHAR*>(client.RecvOverlap.Iocp_buffer);
-			client.RecvOverlap.WsaBuf.len = sizeof(client.RecvOverlap.Iocp_buffer);
+			client.RecvOverlap.WsaBuf.buf = reinterpret_cast<CHAR*>(client.RecvOverlap.Iocp_Buffer);
+			client.RecvOverlap.WsaBuf.len = sizeof(client.RecvOverlap.Iocp_Buffer);
 			
 
 			CreateIoCompletionPort(reinterpret_cast<HANDLE>(newClientSocket),
@@ -586,14 +649,14 @@ namespace
 				&& overlapExp->Original_Overlap.Pointer != nullptr)
 			{
 				std::cout << "WorkerThreadStart() - GetQueuedCompletionStatus error\n";
-				while (true); //debug
+				return;
 			}
 
 			auto clientIter = framework->GetClients().find(serial);
 			if (clientIter == framework->GetClients().cend())
 			{
 				std::cout << "WorkerThreadStart() - Invalid serial number" << std::endl;
-				exit(-1);
+				return;
 			}
 			Client& client = clientIter->second;
 
@@ -606,7 +669,7 @@ namespace
 
 			if (OPERATION_RECV == overlapExp->Operation)
 			{
-				unsigned char* buf_ptr = client.RecvOverlap.Iocp_buffer;
+				unsigned char* buf_ptr = client.RecvOverlap.Iocp_Buffer;
 				int remained = iosize;
 				while (0 < remained)
 				{
@@ -644,7 +707,7 @@ namespace
 			else
 			{
 				std::cout << "Unknown IOCP event!\n";
-				exit(-1);
+				return;
 			}
 		}
 	}
