@@ -53,15 +53,24 @@ Framework::Framework()
 	, isInitialized(false)
 	, isLogin(false)
 {
+	WSADATA	wsadata;
+	WSAStartup(MAKEWORD(2, 2), &wsadata);
 }
 
 Framework::~Framework()
 {
+	WSACleanup();
 }
 
 
 void Framework::Initialize(HWND hWnd, HINSTANCE instance)
 {
+	if (isInitialized == true)
+	{
+		::MessageBox(hWnd, "이미 초기화되었습니다.", "Error", MB_OK);
+		return;
+	}
+
 	mainWindow = hWnd;
 	mainInstance = instance;
 	
@@ -76,15 +85,6 @@ void Framework::Initialize(HWND hWnd, HINSTANCE instance)
 	static const unsigned int	CHANNEL_WIDTH = static_cast<unsigned int>(clientWidth * CHANNEL_WIDTH_RATIO);
 	static const unsigned int	USERS_HEIGHT = static_cast<unsigned int>(clientHeight * USERS_HEIGHT_RATIO);
 	static const unsigned int	COMMAND_HEIGHT = static_cast<unsigned int>(clientHeight * COMMAND_HEIGHT_RATIO);
-
-	if (isInitialized)
-	{
-		::DestroyWindow(editInput);
-		::DestroyWindow(listLog);
-		::DestroyWindow(editChannelName);
-		::DestroyWindow(listUsers);
-		::DestroyWindow(textCommands);
-	}
 
 	editInput = ::CreateWindow("edit", "로그인 전 상태입니다. 사용하고자 하는 아이디 입력 후 Enter를 눌러주세요. 공백, 특수문자 불가"
 		, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_LEFT
@@ -162,68 +162,95 @@ void Framework::ProcessInput()
 		return;
 	}
 
-	static const std::string sysMsg("***System*** 잘못된 명령어 형식입니다. 다시 확인해주세요.");
+	static const std::string sysMsg("***System*** 잘못된 명령어 사용입니다. 다시 확인해주세요.");
 
 	auto tokens = SplitString(str, ' ');
+	switch (GetCommandType(tokens))
+	{
+	case CommandType::WHISPER:
+	{
+		size_t chatBegin = str.find_first_of(tokens[2]);
+		if (chatBegin != str.npos)
+			RequestWhisper(tokens[1], str.substr(chatBegin));
+		break;
+	}
+	
+	case CommandType::CHANNELLIST:
+		RequestChannelList();
+		break;
+
+	case CommandType::CHANNELCONNECT:
+		RequestChannelChange(tokens[1]);
+		break;
+
+	case CommandType::KICKUSER:
+		RequestKick(tokens[1]);
+		break;
+
+	case CommandType::CHATTING:
+		RequestChatting(str);
+		break;
+
+	case CommandType::MISUSE:
+		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
+		break;
+
+	default: //error
+		::MessageBox(mainWindow, "ProcessInput() - GetCommandType() - Unknown Type", "Error", MB_OK);
+		break;
+	} //end switch
+}
+
+////////////////////////////////////////////////////////////////////////////
+//Private Functions
+
+Framework::CommandType 
+	Framework::GetCommandType(const std::vector<std::string>& tokens) const
+{
+	if (tokens.empty())
+		return CommandType::MISUSE;;
+
+	CommandType resultType = CommandType::MISUSE;
+
 	std::string command = tokens[0];
 	size_t tokenCount = tokens.size();
 	if (command == "/w")
 	{
-		if (tokenCount < 3)
-		{
-			::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
-			return;
-		}
-		
-		size_t chatBegin = str.find_first_of(tokens[2]);
-		if(chatBegin != str.npos)
-		{
-			RequestWhisper(tokens[1], str.substr(chatBegin));
-		}
+		if (tokenCount >= 3)
+			resultType = CommandType::WHISPER;
 	}
 	else if (command == "/channels")
 	{
-		if (tokenCount != 1)
-		{
-			::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
-			return;
-		}
-
-		RequestChannelList();
+		if (tokenCount == 1)
+			resultType = CommandType::CHANNELLIST;
 	}
 	else if (command == "/channel")
 	{
-		if (tokenCount != 2)
-		{
-			::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
-			return;
-		}
-
-		RequestChannelChange(tokens[1]);
+		if (tokenCount == 2)
+			resultType = CommandType::CHANNELCONNECT;
 	}
 	else if (command == "/kick")
 	{
-		if (tokenCount != 2)
-		{
-			::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
-			return;
-		}
-
-		RequestKick(tokens[1]);
+		if (tokenCount == 2)
+			resultType = CommandType::KICKUSER;
+	}
+	else if (command.front() == '/')	//명령어시작 '/'이나 해당사항 없음
+	{
+		resultType = CommandType::MISUSE; 
 	}
 	else
 	{
-		RequestChatting(str);
+		resultType = CommandType::CHATTING;
 	}
-}
 
+	return resultType;
+}
 
 bool Framework::IsValidUserName(const std::string& id) const
 {
 	static const unsigned short KOREAN_CODE_BEGIN = 44032;
 	static const unsigned short KOREAN_CODE_END = 55199;
 
-	bool isAlphaNumber = true;
 	for (auto iter = id.cbegin(); iter != id.cend(); ++iter)
 	{
 		char ch = *iter;
@@ -296,7 +323,7 @@ void Framework::ProcessPacket(unsigned char* packet)
 		break;
 
 	default:
-		MessageBox(mainWindow, "ProcessPacket() Unknown packet Type", "Error!", MB_OK);
+		::MessageBox(mainWindow, "ProcessPacket() Unknown packet Type", "Error!", MB_OK);
 		break;
 	}
 }
@@ -457,15 +484,21 @@ void Framework::ProcessNewMaster(unsigned char* packet)
 
 void Framework::RequestLogin(const std::string& id)
 {
+	if (isLogin == true)
+	{	//error
+		::MessageBox(mainWindow, "RequestLogin() - isLogin true", "Error!", MB_OK);
+		return;
+	}
+
 	if (id.size() > MAX_USERNAME_LENGTH)
 	{
-		MessageBox(mainWindow, "너무 긴 이름입니다.", "생성 불가", MB_OK);
+		::MessageBox(mainWindow, "너무 긴 이름입니다.", "생성 불가", MB_OK);
 		return;
 	}
 
 	if (false == IsValidUserName(id))
 	{
-		MessageBox(mainWindow, "사용 불가능한 아이디입니다.", "생성 불가", MB_OK);
+		::MessageBox(mainWindow, "사용 불가능한 아이디입니다.", "생성 불가", MB_OK);
 		return;
 	}
 
@@ -481,6 +514,13 @@ void Framework::RequestLogin(const std::string& id)
 
 void Framework::RequestWhisper(const std::string& listener, const std::string& chat)
 {
+	if (listener == userName)
+	{
+		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM("***System*** 본인에게 귓속말 할 수 없습니다!"));
+		SeekLastAddedCursor(listLog);
+		return;
+	}
+
 	packet_chatting* my_packet = reinterpret_cast<packet_chatting *>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_chatting));
 	my_packet->Size = sizeof(packet_chatting);
@@ -506,6 +546,13 @@ void Framework::RequestChannelList()
 
 void Framework::RequestChannelChange(const std::string& channelName)
 {
+	if (channelName == userChannel)
+	{
+		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM("***System*** 이미 계신 채널입니다."));
+		SeekLastAddedCursor(listLog);
+		return;
+	}
+
 	//client to server - 채널이름만 초기화
 	packet_channel_enter* my_packet = reinterpret_cast<packet_channel_enter *>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_channel_enter));
@@ -520,11 +567,16 @@ void Framework::RequestKick(const std::string& target)
 {
 	if (currentChannelMaster != userName)
 	{
-		std::string sysMsg("***System*** 당신은 방장이 아닙니다!");
-		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
-		SeekLastAddedCursor(listLog);
+		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM("***System*** 당신은 방장이 아닙니다!"));
 		return;
 	}
+	if (target == userName)
+	{
+		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM("***System*** 본인을 강퇴할 수 없습니다!"));
+		return;
+	}
+	SeekLastAddedCursor(listLog);
+	
 
 	packet_kick_user* my_packet = reinterpret_cast<packet_kick_user *>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_kick_user));

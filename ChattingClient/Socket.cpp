@@ -6,13 +6,10 @@
 Socket::Socket()
 	: isInitialized(false)
 {
-	WSADATA	wsadata;
-	WSAStartup(MAKEWORD(2, 2), &wsadata);
 }
 
 Socket::~Socket()
 {
-	WSACleanup();
 }
 
 
@@ -71,7 +68,7 @@ void Socket::ReadPacket(SOCKET sock)
 	{
 		if (0 == inPacketSize) inPacketSize = GetPacketSize(ptr);
 		if (iobyte + savedPacketSize >= inPacketSize) 
-		{	//조립완료
+		{	
 			memcpy(packetBuf + savedPacketSize, ptr, inPacketSize - savedPacketSize);
 			ProcessPacket(packetBuf);
 

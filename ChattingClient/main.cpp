@@ -43,7 +43,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static HWND editIP, buttonIP;
 	static const int ID_SUBMITIP = 1010;
-	static char ipAddress[32];
+	static char ipAddress[16];
 
 	switch (msg) 
 	{
@@ -62,7 +62,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		switch (LOWORD(wParam))
 		{
 		case ID_SUBMITIP:
-			::GetWindowText(editIP, ipAddress, 32);
+			::GetWindowText(editIP, ipAddress, sizeof(ipAddress));
 			bool isConnect = Framework::GetInstance()->GetUserSocket().Initialize(hWnd, ipAddress);
 			if(isConnect)
 			{

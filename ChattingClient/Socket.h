@@ -12,7 +12,6 @@ public:
 	static const int		WM_SOCKET = WM_USER + 1;
 
 	bool		Initialize(HWND mainWindow, const char* serverIP);
-	bool		IsInitialized() const { return isInitialized;	}
 	WSABUF&		GetSendWsaBuf() { return sendWsaBuf; }
 
 	void ReadPacket(SOCKET sock);

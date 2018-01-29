@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <string>
 #include <list>
+#include <vector>
 #include "../Common/Protocol.h"
 
 class Framework
@@ -15,6 +16,15 @@ private:
 	static constexpr float				USERS_HEIGHT_RATIO = 0.70f;
 	static constexpr float				COMMAND_HEIGHT_RATIO = 0.15f;
 
+	enum class CommandType { 
+		MISUSE = 0
+		, WHISPER
+		, CHANNELLIST
+		, CHANNELCONNECT
+		, KICKUSER
+		, CHATTING
+	};
+
 public:
 	static Framework* GetInstance() 
 	{
@@ -23,8 +33,7 @@ public:
 	}
 
 	void Initialize(HWND hWnd, HINSTANCE instance);
-	bool IsInitialized() const { return isInitialized; }
-
+	
 	void ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam);
 	void ProcessInput();
 	void ProcessPacket(unsigned char* packet);
@@ -37,8 +46,9 @@ private:
 	Framework();
 	~Framework();
 
-	bool IsValidUserName(const std::string& id) const;
-	void SeekLastAddedCursor(HWND listBox);
+	CommandType GetCommandType(const std::vector<std::string>& tokens) const;
+	bool		IsValidUserName(const std::string& id) const;
+	void		SeekLastAddedCursor(HWND listBox);
 
 	void ProcessSystemMessage(unsigned char* packet);
 	void ProcessLogin(unsigned char* packet);
