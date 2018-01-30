@@ -35,8 +35,6 @@ struct Client
 		, IsLogin(false)
 		, PacketSize(0)
 		, PreviousSize(0)
-		, UserName("")
-		, ChannelName("")
 	{
 		::ZeroMemory(&RecvOverlap, sizeof(RecvOverlap));
 		::ZeroMemory(PacketBuff, sizeof(PacketBuff));

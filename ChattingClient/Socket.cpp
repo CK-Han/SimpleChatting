@@ -1,5 +1,4 @@
 #include "Socket.h"
-#include <winsock2.h>
 #include "Framework.h"
 #pragma comment (lib, "ws2_32.lib")
 
@@ -67,7 +66,7 @@ void Socket::ReadPacket(SOCKET sock)
 	while (0 != iobyte) 
 	{
 		if (0 == inPacketSize) inPacketSize = GetPacketSize(ptr);
-		if (iobyte + savedPacketSize >= inPacketSize) 
+		if ((iobyte + savedPacketSize) >= inPacketSize) 
 		{	
 			memcpy(packetBuf + savedPacketSize, ptr, inPacketSize - savedPacketSize);
 			ProcessPacket(packetBuf);

@@ -43,8 +43,6 @@ public:
 	void		ProcessKick(int serial, unsigned char* packet);
 	void		ProcessChannelChange(int serial, unsigned char* packet);
 	
-
-	
 private:
 	Framework();
 	~Framework();

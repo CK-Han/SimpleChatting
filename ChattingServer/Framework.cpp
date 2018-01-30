@@ -82,11 +82,12 @@ void Framework::SendPacket(int serial, unsigned char* packet) const
 
 	int ret = WSASend(clientIter->second.ClientSocket, &overlapExp->WsaBuf, 1, NULL, 0,
 		&overlapExp->Original_Overlap, NULL);
-	
+
 	if (0 != ret) 
 	{
 		int error_no = WSAGetLastError();
-		std::cout << "SendPacket::WSASend Error : " <<  error_no << std::endl;
+		if (WSA_IO_PENDING != error_no)
+			std::cout << "SendPacket::WSASend Error : " <<  error_no << std::endl;
 	}
 }
 
@@ -353,7 +354,7 @@ int Framework::GetRandomPublicChannelIndex() const
 	while (true)
 	{
 		randSlot = uid(dre);
-		if (publicChannels[randSlot].GetUserCount() < publicChannelCount)
+		if (publicChannels[randSlot].GetUserCount() < MAX_CHANNEL_USERS)
 			return randSlot;
 		else if(channelIsFull[randSlot] == false)
 		{
@@ -449,6 +450,8 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 
 void Framework::ConnectToRandomPublicChannel(int serial)
 {
+	static int connectChannelCount = 0;
+
 	bool isConnected = false;
 	while (isConnected == false)
 	{
@@ -456,11 +459,13 @@ void Framework::ConnectToRandomPublicChannel(int serial)
 		if (randSlot == -1)
 		{	//모든 공개채널이 가득 찬 상태, 스타크래프트1 배틀넷의 Void 채널과 유사
 			SendSystemMessage(serial, "***System*** 모든 공개채널에 인원이 가득 찼습니다.");
+			std::cout << "채널오류\n";
 			return;
 		}
 		else
 			isConnected = ConnectToChannel(serial, publicChannels[randSlot].GetChannelName());
 	}
+	std::cout << connectChannelCount++ << "명이 채널에 연결됨\n";
 }
 
 bool Framework::ConnectToChannel(int serial, const std::string& channelName)
@@ -617,7 +622,6 @@ namespace
 			client.RecvOverlap.WsaBuf.buf = reinterpret_cast<CHAR*>(client.RecvOverlap.Iocp_Buffer);
 			client.RecvOverlap.WsaBuf.len = sizeof(client.RecvOverlap.Iocp_Buffer);
 			
-
 			CreateIoCompletionPort(reinterpret_cast<HANDLE>(newClientSocket),
 				framework->GetIocpHandle(), newSerial, 0);
 

@@ -18,24 +18,21 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Framework.cpp">
+    <ClCompile Include="Dummy.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="Channel.cpp">
+    <ClCompile Include="DummyHandler.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Framework.h">
+    <ClInclude Include="Dummy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Channel.h">
+    <ClInclude Include="DummyHandler.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\Common\Protocol.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="Client.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

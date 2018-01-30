@@ -170,7 +170,7 @@ void Framework::ProcessInput()
 	case CommandType::WHISPER:
 	{
 		//4 -> '/w ID ' 에서 공백과 /w의 길이
-		RequestWhisper(tokens[1], str.substr(4 + userName.size()));
+		RequestWhisper(tokens[1], str.substr(4 + tokens[1].size()));
 		break;
 	}
 	
@@ -446,7 +446,7 @@ void Framework::ProcessChatting(unsigned char* packet)
 			chatMsg += (std::string(my_packet->Talker) + " 님의 귓속말 : ");
 	}
 	else
-		chatMsg += " : ";
+		chatMsg += std::string(my_packet->Talker) + " : ";
 
 	chatMsg += my_packet->Chat;
 	::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(chatMsg.c_str()));
