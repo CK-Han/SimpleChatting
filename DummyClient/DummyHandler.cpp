@@ -15,6 +15,7 @@ DummyHandler::DummyHandler()
 	: hIocp(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0))
 	, isInitialized(false)
 	, lastSerial(0)
+	, lastCloseSerial(0)
 	, timerQueue(Event_Compare())
 {
 	WSADATA	wsadata;
@@ -48,8 +49,6 @@ void DummyHandler::Close()
 			th->join();
 		timerThread->join();
 	}
-
-	
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -143,11 +142,27 @@ bool DummyHandler::AddDummy(int beginSerial, int count, const std::string& ip)
 		::Sleep(10);
 	}
 
+	std::cout << count << "명 로그인 완료\n";
 	return true;
 }
 
 bool DummyHandler::CloseDummy(int count)
 {
+	for (int i = 0; i < count; ++i)
+	{
+		if (lastCloseSerial + i >= lastSerial)
+			return false;
+		
+		Dummy& dummy = dummies[lastCloseSerial + i].first;
+		if (dummy.isLogin)
+		{
+			dummy.Close();
+			lastCloseSerial++;
+			::Sleep(1);
+		}
+	}
+
+	std::cout << count << "명 종료 완료\n";
 	return true;
 }
 
@@ -246,6 +261,8 @@ void DummyHandler::RequestRandomPacket(int serial)
 {
 	if (serial < 0 || MAX_DUMMY_COUNT <= serial)
 		return;
+	if (dummies[serial].first.isLogin == false)
+		return;
 
 	static std::normal_distribution<double> nd(0.0, 1.0);
 	static std::default_random_engine dre;
@@ -263,10 +280,10 @@ void DummyHandler::RequestRandomPacket(int serial)
 		RequestChatting(serial);
 	else if (COEF_CHATTING <= coef && coef < COEF_WHISPER)
 		RequestWhisper(serial);
-	else if (COEF_WHISPER <= coef && coef< COEF_CHANNELLIST)
+	else if (COEF_WHISPER <= coef && coef < COEF_CHANNELLIST)
 		RequestChannelList(serial);
 	else if (COEF_CHANNELLIST <= coef && coef < COEF_CHANNELCHANGE)
-		RequestChannelChange(serial);
+		;// RequestChannelChange(serial);
 	else if (COEF_CHANNELCHANGE <= coef && coef< COEF_KICK)
 		RequestKick(serial);
 
@@ -377,7 +394,7 @@ void DummyHandler::RequestChatting(int serial)
 //Private 
 std::string DummyHandler::GetRandomUser() const
 {
-	static std::uniform_int_distribution<int> uid(0, lastSerial);
+	std::uniform_int_distribution<int> uid(0, lastSerial);
 	static std::default_random_engine dre;
 
 	const Dummy& dummy = dummies[uid(dre)].first;
@@ -389,7 +406,7 @@ std::string DummyHandler::GetRandomUser() const
 
 std::string DummyHandler::GetRandomChannel() const
 {
-	static std::uniform_int_distribution<int> uid(0, lastSerial);
+	std::uniform_int_distribution<int> uid(0, lastSerial);
 	static std::default_random_engine dre;
 	const int channelLength  = uid(dre) % MAX_CHANNELNAME_LENGTH;
 	

@@ -29,6 +29,7 @@ public:
 	HANDLE						GetIocpHandle() const { return hIocp; }
 	bool						IsShutDown() const { return isShutdown; }
 	int							GetNextValidSerial() { return validSerial++; }
+	std::mutex&					GetMutexLock() { return mLock; }
 	std::map<int, Client>&		GetClients() { return clients; }
 
 	
@@ -49,7 +50,9 @@ private:
 
 	void Initialize();
 
-	
+	void			AddNewClient(const Client& client);
+	void			DeleteClient(int serial);
+
 	int				GetRandomPublicChannelIndex() const;
 	void			BroadcastToChannel(const std::string& channelName, unsigned char* packet);
 

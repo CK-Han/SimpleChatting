@@ -16,13 +16,15 @@ void main()
 	}
 
 
-	cout << "'+' 입력시 100명 추가, 'x' 입력시 프로그램 종료\n";
+	cout << "'+' 입력시 100명 추가, '-'입력시 50명 로그아웃, 'x' 입력시 프로그램 종료\n";
 	int ch = 0;
 	while(ch != 'x')
 	{
 		ch = getchar();
 		if (ch == '+')
 			DummyHandler::GetInstance()->AddDummy(DummyHandler::GetInstance()->GetValidSerial(), 100, ip);
+		else if(ch == '-')
+			DummyHandler::GetInstance()->DummyHandler::GetInstance()->CloseDummy(50);
 	}
 	 DummyHandler::GetInstance()->Close();
 

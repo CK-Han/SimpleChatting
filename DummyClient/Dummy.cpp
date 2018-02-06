@@ -37,5 +37,6 @@ bool Dummy::Connect(const char* serverIP)
 
 void Dummy::Close()
 {
+	isLogin = false;
 	::shutdown(clientSocket, SD_BOTH);
 }

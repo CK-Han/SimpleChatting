@@ -35,11 +35,6 @@ Framework::~Framework()
 
 void Framework::Initialize()
 {
-	for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
-		workerThreads.emplace_back(new std::thread(WorkerThreadStart));
-
-	acceptThread = std::unique_ptr<std::thread>(new std::thread(AcceptThreadStart));
-
 	//MAX_PUBLIC_CHANNEL_COUNT
 	publicChannels.emplace_back("FreeChannel");
 	publicChannels.emplace_back("ForTeenagers");
@@ -49,7 +44,7 @@ void Framework::Initialize()
 	publicChannels.emplace_back("AboutStudy");
 	publicChannels.emplace_back("AboutHobby");
 	publicChannels.emplace_back("AboutExcercise");
-	
+
 	publicChannels.emplace_back("Sample1");
 	publicChannels.emplace_back("Sample2");
 	publicChannels.emplace_back("Sample3");
@@ -58,6 +53,11 @@ void Framework::Initialize()
 	publicChannels.emplace_back("Sample6");
 	publicChannels.emplace_back("Sample7");
 	publicChannels.emplace_back("Sample8");
+
+	for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
+		workerThreads.emplace_back(new std::thread(WorkerThreadStart));
+
+	acceptThread = std::unique_ptr<std::thread>(new std::thread(AcceptThreadStart));
 }
 	 
 
@@ -80,19 +80,27 @@ void Framework::SendPacket(int serial, unsigned char* packet) const
 	overlapExp->WsaBuf.len = GetPacketSize(packet);
 	memcpy(overlapExp->Iocp_Buffer, packet, overlapExp->WsaBuf.len);
 
-	int ret = WSASend(clientIter->second.ClientSocket, &overlapExp->WsaBuf, 1, NULL, 0,
+	int ret = ::WSASend(clientIter->second.ClientSocket, &overlapExp->WsaBuf, 1, NULL, 0,
 		&overlapExp->Original_Overlap, NULL);
 
 	if (0 != ret) 
 	{
-		int error_no = WSAGetLastError();
-		if (WSA_IO_PENDING != error_no)
+		int error_no = ::WSAGetLastError();
+		if (WSA_IO_PENDING != error_no 
+			&& WSAECONNRESET != error_no)
 			std::cout << "SendPacket::WSASend Error : " <<  error_no << std::endl;
 	}
 }
 
 void Framework::SendSystemMessage(int serial, const std::string& msg) const
 {
+	auto clientIter = clients.find(serial);
+	if (clientIter == clients.cend())
+	{
+		std::cout << "SendSystemMessage() - Invalid serial number" << std::endl;
+		return;
+	}
+
 	packet_system to_packet;
 	::ZeroMemory(&to_packet, sizeof(to_packet));
 	to_packet.Size = sizeof(to_packet);
@@ -143,12 +151,14 @@ void Framework::ProcessUserClose(int serial)
 
 	if (client.IsLogin == true)
 	{	//로그인 되었다 -> 채널에 존재하므로 채널을 떠나야 한다.
+		client.IsLogin = false;
+		
 		Channel* channel = FindChannelFromName(client.ChannelName);
 		if(channel)
 			HandleUserLeave(serial, false, channel);
 	}
 	
-	std::unique_lock<std::mutex> ul(mLock);
+	::closesocket(client.ClientSocket);
 	clients.erase(serial);
 }
 
@@ -340,6 +350,7 @@ void Framework::ProcessChannelChange(int serial, unsigned char* packet)
 ////////////////////////////////////////////////////////////////////////////
 //Private Functions
 
+
 //return [-1, MAX_PUBLIC_CHANNEL_COUNT), '-1' means public channels are full
 int Framework::GetRandomPublicChannelIndex() const
 {
@@ -399,6 +410,7 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 
 	std::unique_lock<std::mutex> ul(mLock);
 	channel->Exit(&client);
+
 	if (client.UserName == channel->GetChannelMaster())
 	{	//방장존재, 즉 커스텀채널인 경우 (dynamic_cast가 필요없다!)
 		auto toDeleteIter = std::find_if(customChannels.cbegin(), customChannels.cend(),
@@ -412,6 +424,7 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 			if (channel->GetUserCount() == 0)
 			{
 				customChannels.erase(toDeleteIter);
+				return;
 			}
 			else
 			{	//리스트에서 가장 오래 지낸 유저에게 방장을 넘긴다.
@@ -450,8 +463,6 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 
 void Framework::ConnectToRandomPublicChannel(int serial)
 {
-	static int connectChannelCount = 0;
-
 	bool isConnected = false;
 	while (isConnected == false)
 	{
@@ -465,7 +476,6 @@ void Framework::ConnectToRandomPublicChannel(int serial)
 		else
 			isConnected = ConnectToChannel(serial, publicChannels[randSlot].GetChannelName());
 	}
-	std::cout << connectChannelCount++ << "명이 채널에 연결됨\n";
 }
 
 bool Framework::ConnectToChannel(int serial, const std::string& channelName)
@@ -616,17 +626,18 @@ namespace
 			//새 클라이언트 생성, 자료구조에 삽입
 			framework->GetClients().insert(std::make_pair(newSerial, Client()));
 			Client& client = framework->GetClients()[newSerial];
+
 			client.Serial = newSerial;
 			client.ClientSocket = newClientSocket;
 			client.RecvOverlap.Operation = OPERATION_RECV;
 			client.RecvOverlap.WsaBuf.buf = reinterpret_cast<CHAR*>(client.RecvOverlap.Iocp_Buffer);
 			client.RecvOverlap.WsaBuf.len = sizeof(client.RecvOverlap.Iocp_Buffer);
-			
+
 			CreateIoCompletionPort(reinterpret_cast<HANDLE>(newClientSocket),
 				framework->GetIocpHandle(), newSerial, 0);
 
 			DWORD flags = 0;
-			int ret = WSARecv(newClientSocket, &client.RecvOverlap.WsaBuf, 1, NULL,
+			int ret = ::WSARecv(newClientSocket, &client.RecvOverlap.WsaBuf, 1, NULL,
 				&flags, &client.RecvOverlap.Original_Overlap, NULL);
 			if (0 != ret)
 			{
@@ -656,6 +667,8 @@ namespace
 				return;
 			}
 
+			//std::unique_lock<std::mutex> ul(framework->GetMutexLock());
+
 			auto clientIter = framework->GetClients().find(serial);
 			if (clientIter == framework->GetClients().cend())
 			{
@@ -666,7 +679,6 @@ namespace
 
 			if (0 == iosize)
 			{
-				closesocket(client.ClientSocket);
 				framework->ProcessUserClose(serial);
 				continue;
 			}
@@ -683,7 +695,7 @@ namespace
 
 					if (remained >= required)
 					{	//패킷 조립 완료
-						memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, required);
+						std::memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, required);
 						framework->ProcessPacket(serial, client.PacketBuff);
 						buf_ptr += required;
 						remained -= required;
@@ -692,7 +704,7 @@ namespace
 					}
 					else
 					{
-						memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, required);
+						std::memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, required);
 						buf_ptr += remained;
 						client.PreviousSize += remained;
 						remained = 0;
@@ -700,7 +712,7 @@ namespace
 				}
 
 				DWORD flags = 0;
-				WSARecv(client.ClientSocket,
+				::WSARecv(client.ClientSocket,
 					&client.RecvOverlap.WsaBuf, 1, NULL, &flags,
 					&client.RecvOverlap.Original_Overlap, NULL);
 			}

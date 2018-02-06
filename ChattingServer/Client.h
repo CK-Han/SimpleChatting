@@ -38,6 +38,9 @@ struct Client
 	{
 		::ZeroMemory(&RecvOverlap, sizeof(RecvOverlap));
 		::ZeroMemory(PacketBuff, sizeof(PacketBuff));
+
+		RecvOverlap.WsaBuf.buf = reinterpret_cast<CHAR*>(RecvOverlap.Iocp_Buffer);
+		RecvOverlap.WsaBuf.len = sizeof(RecvOverlap.Iocp_Buffer);
 	}
 };
 
