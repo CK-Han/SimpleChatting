@@ -8,6 +8,12 @@ Channel::Channel(const std::string& name)
 {
 }
 
+Channel::Channel(const Channel& other)
+	: channelName(other.channelName)
+	, channelMaster(other.channelMaster)
+	, clientsInChannel(other.clientsInChannel)
+{
+}
 
 Channel::~Channel()
 {

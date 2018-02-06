@@ -40,7 +40,7 @@ void DummyHandler::Close()
 			::Sleep(1);
 		}
 	}
-	::Sleep(5000);
+	::Sleep(2000);
 
 
 	if (isShutdown)
@@ -283,7 +283,7 @@ void DummyHandler::RequestRandomPacket(int serial)
 	else if (COEF_WHISPER <= coef && coef < COEF_CHANNELLIST)
 		RequestChannelList(serial);
 	else if (COEF_CHANNELLIST <= coef && coef < COEF_CHANNELCHANGE)
-		;// RequestChannelChange(serial);
+		RequestChannelChange(serial);
 	else if (COEF_CHANNELCHANGE <= coef && coef< COEF_KICK)
 		RequestKick(serial);
 

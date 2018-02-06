@@ -15,11 +15,11 @@
 
 class Framework
 {
-private:
-	static const unsigned int	NUM_WORKER_THREADS = 8;
-
-
 public:
+	static const unsigned int	NUM_WORKER_THREADS = 8;
+	static const unsigned int	MAX_CLIENT_COUNT = 10000;
+	static const int			SERIAL_ERROR = -1;
+
 	static Framework* GetInstance()
 	{
 		static Framework framework;
@@ -28,11 +28,11 @@ public:
 
 	HANDLE						GetIocpHandle() const { return hIocp; }
 	bool						IsShutDown() const { return isShutdown; }
-	int							GetNextValidSerial() { return validSerial++; }
-	std::mutex&					GetMutexLock() { return mLock; }
-	std::map<int, Client>&		GetClients() { return clients; }
+	const Client&				GetClient(int index) const { return clients[index]; }
+	Client&						GetClient(int index) { return clients[index]; }
 
-	
+	int							GetSeirialForNewClient();
+
 	void		SendPacket(int serial, unsigned char* packet) const;
 	void		SendSystemMessage(int serial, const std::string& msg) const;
 	
@@ -43,15 +43,12 @@ public:
 	void		ProcessChatting(int serial, unsigned char* packet);
 	void		ProcessKick(int serial, unsigned char* packet);
 	void		ProcessChannelChange(int serial, unsigned char* packet);
-	
+
 private:
 	Framework();
 	~Framework();
 
 	void Initialize();
-
-	void			AddNewClient(const Client& client);
-	void			DeleteClient(int serial);
 
 	int				GetRandomPublicChannelIndex() const;
 	void			BroadcastToChannel(const std::string& channelName, unsigned char* packet);
@@ -60,20 +57,23 @@ private:
 	void			ConnectToRandomPublicChannel(int serial);
 	bool			ConnectToChannel(int serial, const std::string& channelName);
 	
-	Client*			FindClientFromName(const std::string& clientName);
+	int				FindClientSerialFromName(const std::string& clientName);
 	Channel*		FindChannelFromName(const std::string& channelName);
 
+	void			AddNewCustomChannel(const std::string& channelName);
 
 private:
 	HANDLE				hIocp;
 	bool				isShutdown;
-	int					validSerial;
 
 	std::vector<std::unique_ptr<std::thread>>		workerThreads;
 	std::unique_ptr<std::thread>					acceptThread;
 
 	std::mutex										mLock;
-	std::map<int /*serial*/, Client>				clients;
+	std::mutex										loginLock;
+	std::mutex										clientNameLock;
+	std::mutex										customChannelsLock;
+	std::vector<Client>								clients;
 
 	std::vector<PublicChannel>						publicChannels;
 	std::list<CustomChannel>						customChannels;

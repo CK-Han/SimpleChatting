@@ -1,6 +1,11 @@
 #pragma once
 #include <string>
 #include <list>
+#include <mutex>
+
+
+//test 
+#include <iostream>
 
 struct Client;
 
@@ -8,7 +13,10 @@ class Channel
 {
 public:
 	Channel(const std::string& name);
+	Channel(const Channel& other);
 	virtual ~Channel();
+	
+	
 
 	virtual void	Enter(Client* client);
 	virtual void	Exit(Client* client);
@@ -17,13 +25,15 @@ public:
 	std::string						GetChannelName() const { return channelName; }
 	const std::list<Client*>&		GetClientsInChannel() const { return clientsInChannel; }
 	std::string						GetChannelMaster() const { return channelMaster; }
+	std::mutex&						GetChannelLock() { return channelLock; }
 
 	void							SetChannelMaster(const std::string& master) { channelMaster = master; }
 
 private:
-	const std::string				channelName;
+	std::string						channelName;
 	std::string						channelMaster;
 	std::list<Client*>				clientsInChannel;
+	std::mutex						channelLock;
 };
 
 
@@ -44,5 +54,4 @@ public:
 	virtual ~CustomChannel();
 
 	virtual void	Enter(Client* client);
-
 };
