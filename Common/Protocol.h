@@ -1,4 +1,5 @@
 #pragma once
+#pragma pack(push, 1)
 
 #define MAX_BUFF_SIZE			4000
 #define MY_SERVER_PORT			9000
@@ -142,3 +143,7 @@ struct packet_new_master
 	char			Channel[MAX_CHANNELNAME_LENGTH];
 	char			Master[MAX_USERNAME_LENGTH];
 };
+
+
+
+#pragma pack(pop)

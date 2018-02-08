@@ -139,7 +139,7 @@ bool DummyHandler::AddDummy(int beginSerial, int count, const std::string& ip)
 		SendPacket(i, reinterpret_cast<unsigned char*>(&my_packet));
 
 		++lastSerial;
-		::Sleep(10);
+		//::Sleep(10);
 	}
 
 	std::cout << count << "명 로그인 완료\n";
@@ -267,11 +267,11 @@ void DummyHandler::RequestRandomPacket(int serial)
 	static std::normal_distribution<double> nd(0.0, 1.0);
 	static std::default_random_engine dre;
 
-	static constexpr double	COEF_CHATTING = 0.6;
-	static constexpr double	COEF_WHISPER = 0.8;
-	static constexpr double	COEF_CHANNELLIST = 0.85;
-	static constexpr double	COEF_CHANNELCHANGE = 0.95;
-	static constexpr double	COEF_KICK = 1.0;
+	static constexpr double	COEF_CHATTING = 0.6;			//60%
+	static constexpr double	COEF_WHISPER = 0.8;				//20%
+	static constexpr double	COEF_CHANNELLIST = 0.85;		//5%
+	static constexpr double	COEF_CHANNELCHANGE = 0.95;		//10%
+	static constexpr double	COEF_KICK = 1.0;				//5%
 
 	double coef = nd(dre);
 	Dummy& dummy = dummies[serial].first;
@@ -283,7 +283,7 @@ void DummyHandler::RequestRandomPacket(int serial)
 	else if (COEF_WHISPER <= coef && coef < COEF_CHANNELLIST)
 		RequestChannelList(serial);
 	else if (COEF_CHANNELLIST <= coef && coef < COEF_CHANNELCHANGE)
-		RequestChannelChange(serial);
+		;//RequestChannelChange(serial);
 	else if (COEF_CHANNELCHANGE <= coef && coef< COEF_KICK)
 		RequestKick(serial);
 
@@ -419,7 +419,7 @@ std::string DummyHandler::GetRandomChannel() const
 	if (dummy.isLogin == false)
 		return "";
 
-	if (uid(dre) & 1) //더미들이 있는 채널로
+	if (uid(dre) >= (MAX_CHANNELNAME_LENGTH / 4)) //더미들이 있는 채널로 75%확률
 		return dummy.userChannel;
 	else //새 커스텀 채널로
 	{

@@ -31,7 +31,6 @@ LRESULT CALLBACK EditSubProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 std::vector<std::string>
 	SplitString(const std::string& input, char delimeter)
 {
-	std::string source(input);
 	std::vector<std::string> tokens;
 
 	std::istringstream iss(input);
@@ -192,6 +191,7 @@ void Framework::ProcessInput()
 
 	case CommandType::MISUSE:
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
+		SeekLastAddedCursor(listLog);
 		break;
 
 	default: //error
@@ -419,9 +419,10 @@ void Framework::ProcessNewfaceEnter(unsigned char* packet)
 void Framework::ProcessUserLeave(unsigned char* packet)
 {
 	packet_user_leave* my_packet = reinterpret_cast<packet_user_leave*>(packet);
+	
+	std::string sysMsg("***System*** ");
 	if (my_packet->IsKicked)
 	{
-		std::string sysMsg("***System*** ");
 		sysMsg += my_packet->User + std::string(" 님이 강퇴당했습니다.");
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
 		SeekLastAddedCursor(listLog);
@@ -429,8 +430,15 @@ void Framework::ProcessUserLeave(unsigned char* packet)
 
 	int slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(my_packet->User));
 
-	if (slot != -1)
+	if(slot != LB_ERR)
 		::SendMessage(listUsers, LB_DELETESTRING, WPARAM(slot), 0);
+	else
+	{
+		sysMsg += "채널 오류, 채널에 다시 접속해주시기 바랍니다.";
+		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
+		SeekLastAddedCursor(listLog);
+	}
+	
 }
 
 void Framework::ProcessChatting(unsigned char* packet)

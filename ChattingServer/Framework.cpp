@@ -401,7 +401,7 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 		{
 			if (channel->GetUserCount() == 0)
 			{
-				customChannels.erase(toDeleteChannelIter);
+				//customChannels.erase(toDeleteChannelIter);
 				return; //채널이 없어지므로, 후속처리(남은 유저들에게 정보 전송)가 필요하지 않아 return
 			}
 			else
