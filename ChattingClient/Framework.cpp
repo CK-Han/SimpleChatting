@@ -428,9 +428,11 @@ void Framework::ProcessUserLeave(unsigned char* packet)
 		SeekLastAddedCursor(listLog);
 	}
 
-	int slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(my_packet->User));
+	int slot = ::SendMessage(listUsers, LB_FINDSTRINGEXACT, 0, LPARAM(my_packet->User));
+	if(slot == LB_ERR)
+		slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(my_packet->User));
 
-	if(slot != LB_ERR)
+	if (slot != LB_ERR)
 		::SendMessage(listUsers, LB_DELETESTRING, WPARAM(slot), 0);
 	else
 	{
@@ -438,7 +440,6 @@ void Framework::ProcessUserLeave(unsigned char* packet)
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
 		SeekLastAddedCursor(listLog);
 	}
-	
 }
 
 void Framework::ProcessChatting(unsigned char* packet)

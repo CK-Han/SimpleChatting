@@ -12,25 +12,27 @@
 #include "Channel.h"
 
 
-
 class Framework
 {
 public:
+	static const unsigned int	GQCS_TIMEOUT_MILLISECONDS = 3000;
+	static const unsigned int	ACCEPT_TIMEOUT_SECONDS = 3;
 	static const unsigned int	NUM_WORKER_THREADS = 8;
 	static const unsigned int	MAX_CLIENT_COUNT = 10000;
 	static const int			SERIAL_ERROR = -1;
 
-	static Framework* GetInstance()
+	static Framework& GetInstance()
 	{
 		static Framework framework;
-		return &framework;
+		return framework;
 	}
 
-	HANDLE						GetIocpHandle() const { return hIocp; }
 	bool						IsShutDown() const { return isShutdown; }
+
+	HANDLE						GetIocpHandle() const { return hIocp; }
 	const Client&				GetClient(int index) const { return clients[index]; }
 	Client&						GetClient(int index) { return clients[index]; }
-
+	
 	int							GetSeirialForNewClient();
 
 	void		SendPacket(int serial, unsigned char* packet) const;
@@ -44,11 +46,19 @@ public:
 	void		ProcessKick(int serial, unsigned char* packet);
 	void		ProcessChannelChange(int serial, unsigned char* packet);
 
+
+//Debug
+	int							DebugUserCount();
+	std::vector<std::string>	DebugCustomChannels();
+//Debug
+
+
 private:
 	Framework();
 	~Framework();
 
 	void Initialize();
+	void ShutDown();
 
 	int				GetRandomPublicChannelIndex() const;
 	void			BroadcastToChannel(const std::string& channelName, unsigned char* packet);
@@ -69,13 +79,13 @@ private:
 	std::vector<std::unique_ptr<std::thread>>		workerThreads;
 	std::unique_ptr<std::thread>					acceptThread;
 
-	std::mutex										mLock;
 	std::mutex										loginLock;
 	std::mutex										clientNameLock;
 	std::mutex										customChannelsLock;
+	
 	std::vector<Client>								clients;
 
 	std::vector<PublicChannel>						publicChannels;
-	std::list<CustomChannel>						customChannels;
+	std::vector<CustomChannel>						customChannels;
 };
 

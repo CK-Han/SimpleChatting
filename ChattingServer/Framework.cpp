@@ -15,6 +15,7 @@ Framework::Framework()
 	: hIocp(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0))
 	, isShutdown(false)
 	, clients(MAX_CLIENT_COUNT, Client())
+	, customChannels(MAX_CLIENT_COUNT, CustomChannel(""))
 {
 	WSADATA	wsadata;
 	::WSAStartup(MAKEWORD(2, 2), &wsadata);
@@ -25,11 +26,7 @@ Framework::Framework()
 
 Framework::~Framework()
 {
-	for (auto& th : workerThreads)
-		th->join();
-	acceptThread->join();
-
-	::WSACleanup();
+	ShutDown();
 }
 
 
@@ -59,7 +56,18 @@ void Framework::Initialize()
 
 	acceptThread = std::unique_ptr<std::thread>(new std::thread(AcceptThreadStart));
 }
-	 
+
+void Framework::ShutDown()
+{
+	isShutdown = true;
+
+	for (auto& th : workerThreads)
+		th->join();
+	acceptThread->join();
+
+	::WSACleanup();
+}
+
 
 ////////////////////////////////////////////////////////////////////////////
 //Send to Client
@@ -211,8 +219,16 @@ void Framework::ProcessChannelList(int serial)
 	std::memcpy(&channelList_packet.PublicChannelNames, publicChannelNames.c_str(), publicChannelNames.size());
 	
 	std::unique_lock<std::mutex> ulCustom(customChannelsLock);
-	channelList_packet.CustomChannelCount = customChannels.size();
+	unsigned int customChannelCount = 0;
+	for (auto& customChannel : customChannels)
+	{
+		if (customChannel.IsCreated()) 
+			customChannelCount++;
+	}
 	ulCustom.unlock();
+
+	channelList_packet.CustomChannelCount = customChannelCount;
+	
 	
 	SendPacket(serial, reinterpret_cast<unsigned char *>(&channelList_packet));
 }
@@ -385,31 +401,20 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 	std::string channelName = channel->GetChannelName();
 
 	std::unique_lock<std::mutex> ulChannel(channel->GetChannelLock());
-	channel->Exit(&client);
+	
+	std::string beforeMasterName = channel->GetChannelMaster();
+	channel->Exit(&client);	//퇴장에 의해 방장이 변경될 수 있다.
 
-	if (client.UserName == channel->GetChannelMaster())
-	{	//방장이 나가는 경우, 즉 커스텀채널인 경우 (dynamic_cast가 필요없다!)
-		std::unique_lock<std::mutex> ulCustom(customChannelsLock);
+	if (client.UserName == beforeMasterName)
+	{	
+		isMasterChanged = true;
 
-		auto toDeleteChannelIter = std::find_if(customChannels.cbegin(), customChannels.cend(),
-			[&channelName](const CustomChannel& ch)
-		{
-			return ch.GetChannelName() == channelName;
-		});
-
-		if (toDeleteChannelIter != customChannels.cend())
-		{
-			if (channel->GetUserCount() == 0)
-			{
-				//customChannels.erase(toDeleteChannelIter);
-				return; //채널이 없어지므로, 후속처리(남은 유저들에게 정보 전송)가 필요하지 않아 return
-			}
-			else
-			{	//리스트에서 가장 오래 지낸 유저에게 방장을 넘긴다.
-				std::string newMaster = channel->GetClientsInChannel().front()->UserName;
-				channel->SetChannelMaster(newMaster);
-				isMasterChanged = true;
-			}
+		if (channel->GetUserCount() == 0)
+		{	//채널 파기, 본 조건문이 진행되는 경우는 channel이 반드시 CustomChannel 이다.
+			CustomChannel* closedChannel = reinterpret_cast<CustomChannel*>(channel);
+			closedChannel->CloseChannel();
+			
+			return; //후속처리(채널에 남은 유저들에게 정보 전송)가 필요하지 않아 return
 		}
 	}
 	ulChannel.unlock();
@@ -448,7 +453,7 @@ void Framework::ConnectToRandomPublicChannel(int serial)
 		if (randSlot == -1)
 		{	//모든 공개채널이 가득 찬 상태, 스타크래프트1 배틀넷의 Void 채널과 유사
 			SendSystemMessage(serial, "***System*** 모든 공개채널에 인원이 가득 찼습니다.");
-			std::cout << "채널오류\n";
+			std::cout << "all public channels are full\n";
 			return;
 		}
 		else
@@ -579,13 +584,52 @@ void Framework::AddNewCustomChannel(const std::string& channelName)
 	std::unique_lock<std::mutex> ulCustom(customChannelsLock);
 
 	auto iter = std::find_if(customChannels.cbegin(), customChannels.cend(),
-		[&channelName](const CustomChannel& cc) 
+		[&channelName](const CustomChannel& cc)
 	{
 		return cc.GetChannelName() == channelName;
 	});
 
 	if (iter == customChannels.cend())
-		customChannels.emplace_back(channelName);
+	{
+		for (int i = 0; i < MAX_CLIENT_COUNT; ++i)
+		{
+			if (customChannels[i].IsCreated() == true) continue;
+
+			customChannels[i].InitializeChannel(channelName);
+			break;
+		}
+	}
+	else
+	{
+		std::cout << "AddNewCustomChannel() error - duplicated channelName\n";
+	}
+}
+
+
+int Framework::DebugUserCount()
+{
+	int userCount = 0;
+	std::unique_lock<std::mutex> ulLogin(loginLock);
+	for (int i = 0; i < MAX_CLIENT_COUNT; ++i)
+	{
+		if (clients[i].IsLogin) userCount++;
+	}
+	return userCount;
+}
+
+std::vector<std::string> 
+	Framework::DebugCustomChannels()
+{
+	std::vector<std::string> customs;
+
+	std::unique_lock<std::mutex> ulLogin(customChannelsLock);
+	for (auto& ch : customChannels)
+	{
+		if (ch.IsCreated())
+			customs.emplace_back(ch.GetChannelName());
+	}
+
+	return customs;
 }
 
 
@@ -594,7 +638,7 @@ namespace
 {
 	void AcceptThreadStart()
 	{
-		Framework* framework = Framework::GetInstance();
+		Framework& framework = Framework::GetInstance();
 		SOCKADDR_IN listenAddr;
 
 		SOCKET acceptSocket = ::WSASocket(AF_INET, SOCK_STREAM,
@@ -608,10 +652,29 @@ namespace
 		::bind(acceptSocket, reinterpret_cast<sockaddr *>(&listenAddr), sizeof(listenAddr));
 		::listen(acceptSocket, 10);
 
-		while (false == framework->IsShutDown())
+		FD_SET acceptSet;
+		timeval timeVal;
+		timeVal.tv_sec = Framework::ACCEPT_TIMEOUT_SECONDS;
+		timeVal.tv_usec = 0;
+		
+		while (false == framework.IsShutDown())
 		{
+			FD_ZERO(&acceptSet);
+			FD_SET(acceptSocket, &acceptSet);
+			int selectResult = ::select(0, &acceptSet, nullptr, nullptr, &timeVal);
+			if (selectResult == 0)
+			{	//timeout
+				continue;
+			}
+			else if (selectResult == SOCKET_ERROR)
+			{
+				std::cout << "AcceptThreadStart() - select() error\n";
+				continue;
+			}
+
 			SOCKADDR_IN clientAddr;
 			int addrSize = sizeof(clientAddr);
+			
 			SOCKET newClientSocket = ::WSAAccept(acceptSocket,
 				reinterpret_cast<sockaddr *>(&clientAddr), &addrSize,
 				NULL, NULL);
@@ -623,7 +686,7 @@ namespace
 				continue;
 			}
 
-			int newSerial = framework->GetSeirialForNewClient();
+			int newSerial = framework.GetSeirialForNewClient();
 			if (newSerial == Framework::SERIAL_ERROR)
 			{
 				::closesocket(newClientSocket);
@@ -632,7 +695,7 @@ namespace
 			}
 
 			//새 클라이언트 생성, 자료구조에 삽입
-			Client& client = framework->GetClient(newSerial);
+			Client& client = framework.GetClient(newSerial);
 
 			client.Serial = newSerial;
 			client.ClientSocket = newClientSocket;
@@ -641,7 +704,7 @@ namespace
 			client.RecvOverlap.WsaBuf.len = sizeof(client.RecvOverlap.Iocp_Buffer);
 
 			CreateIoCompletionPort(reinterpret_cast<HANDLE>(newClientSocket),
-				framework->GetIocpHandle(), newSerial, 0);
+				framework.GetIocpHandle(), newSerial, 0);
 
 			DWORD flags = 0;
 			int ret = ::WSARecv(newClientSocket, &client.RecvOverlap.WsaBuf, 1, NULL,
@@ -657,31 +720,35 @@ namespace
 
 	void WorkerThreadStart()
 	{
-		Framework* framework = Framework::GetInstance();
-		while (false == framework->IsShutDown())
+		Framework& framework = Framework::GetInstance();
+		while (false == framework.IsShutDown())
 		{
 			DWORD iosize;
 			DWORD serial;
 			Overlap_Exp* overlapExp;
 
-			BOOL result = GetQueuedCompletionStatus(framework->GetIocpHandle(),
-				&iosize, &serial, reinterpret_cast<LPOVERLAPPED*>(&overlapExp), INFINITE);
+			BOOL result = GetQueuedCompletionStatus(framework.GetIocpHandle(),
+				&iosize, &serial, reinterpret_cast<LPOVERLAPPED*>(&overlapExp), Framework::GQCS_TIMEOUT_MILLISECONDS);
 
-			if (result == false 
-				&& overlapExp->Original_Overlap.Pointer != nullptr)
+			if (overlapExp == nullptr 
+				&& result == false)
+			{	//timeout
+				continue;
+			}
+			if (overlapExp->Original_Overlap.Pointer != nullptr)
 			{
 				std::cout << "WorkerThreadStart() - GetQueuedCompletionStatus error\n";
 				continue;
 			}
 			if (0 == iosize)
 			{
-				framework->ProcessUserClose(serial);
+				framework.ProcessUserClose(serial);
 				continue;
 			}
 
 			if (OPERATION_RECV == overlapExp->Operation)
 			{
-				Client& client = framework->GetClient(serial);
+				Client& client = framework.GetClient(serial);
 				
 				unsigned char* buf_ptr = client.RecvOverlap.Iocp_Buffer;
 				int remained = iosize;
@@ -694,7 +761,7 @@ namespace
 					if (remained >= required)
 					{	//패킷 조립 완료
 						std::memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, required);
-						framework->ProcessPacket(serial, client.PacketBuff);
+						framework.ProcessPacket(serial, client.PacketBuff);
 						buf_ptr += required;
 						remained -= required;
 						client.PacketSize = 0;

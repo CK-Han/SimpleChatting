@@ -65,6 +65,7 @@ PublicChannel::~PublicChannel()
 
 CustomChannel::CustomChannel(const std::string& name)
 	: Channel(name)
+	, isCreated(false)
 {
 }
 
@@ -72,6 +73,7 @@ CustomChannel::CustomChannel(const std::string& name)
 CustomChannel::~CustomChannel()
 {
 }
+
 
 void CustomChannel::Enter(Client* client)
 {
@@ -81,4 +83,32 @@ void CustomChannel::Enter(Client* client)
 	}
 
 	Channel::Enter(client);
+}
+
+
+void CustomChannel::Exit(Client* client)
+{
+	Channel::Exit(client);
+
+	if (client->UserName == GetChannelMaster()
+		&& GetUserCount() > 0)
+	{	//리스트에서 가장 오래 지낸 유저(front)에게 방장을 넘긴다.
+		SetChannelMaster(GetClientsInChannel().front()->UserName);
+	}
+}
+
+
+void CustomChannel::InitializeChannel(const std::string& chName)
+{
+	GetClientsInChannel().clear();
+	isCreated = true;
+	SetChannelName(chName);
+}
+
+void CustomChannel::CloseChannel()
+{
+	GetClientsInChannel().clear();
+	isCreated = false;
+	SetChannelMaster("");
+	SetChannelName("");
 }

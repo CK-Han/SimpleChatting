@@ -24,7 +24,7 @@ DummyHandler::DummyHandler()
 
 DummyHandler::~DummyHandler()
 {
-	::WSACleanup();
+	Close();
 }
 
 void DummyHandler::Close()
@@ -49,6 +49,8 @@ void DummyHandler::Close()
 			th->join();
 		timerThread->join();
 	}
+
+	::WSACleanup();
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -283,7 +285,7 @@ void DummyHandler::RequestRandomPacket(int serial)
 	else if (COEF_WHISPER <= coef && coef < COEF_CHANNELLIST)
 		RequestChannelList(serial);
 	else if (COEF_CHANNELLIST <= coef && coef < COEF_CHANNELCHANGE)
-		;//RequestChannelChange(serial);
+		RequestChannelChange(serial);
 	else if (COEF_CHANNELCHANGE <= coef && coef< COEF_KICK)
 		RequestKick(serial);
 
@@ -413,7 +415,7 @@ std::string DummyHandler::GetRandomChannel() const
 	static char* chars = "0123456789"
 		"abcdefghijklmnopqrstuvwxyz"
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-	static int charsCount = sizeof(chars);
+	static int charsCount = ::strlen(chars);
 
 	const Dummy& dummy = dummies[uid(dre)].first;
 	if (dummy.isLogin == false)
