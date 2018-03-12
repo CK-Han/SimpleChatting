@@ -5,7 +5,8 @@
 #include <mutex>
 #include <memory>
 #include <vector>
-#include <map>
+#include <concurrent_queue.h>
+#include <unordered_map>
 #include <string>
 #include "../Common/Protocol.h"
 #include "Client.h"
@@ -15,11 +16,14 @@
 class Framework
 {
 public:
+	using SERIAL_TYPE = decltype(Client::Serial);
+
 	static const unsigned int	GQCS_TIMEOUT_MILLISECONDS = 3000;
 	static const unsigned int	ACCEPT_TIMEOUT_SECONDS = 3;
+	static const unsigned int	LOGIN_TIMEOUT_MILLISECONDS = 3000;
 	static const unsigned int	NUM_WORKER_THREADS = 8;
 	static const unsigned int	MAX_CLIENT_COUNT = 10000;
-	static const int			SERIAL_ERROR = -1;
+	static const SERIAL_TYPE	SERIAL_ERROR = -1;
 
 	static Framework& GetInstance()
 	{
@@ -30,26 +34,26 @@ public:
 	bool						IsShutDown() const { return isShutdown; }
 
 	HANDLE						GetIocpHandle() const { return hIocp; }
-	const Client&				GetClient(int index) const { return clients[index]; }
-	Client&						GetClient(int index) { return clients[index]; }
+	const Client&				GetClient(SERIAL_TYPE index) const { return clients[index]; }
+	Client&						GetClient(SERIAL_TYPE index) { return clients[index]; }
 	
-	int							GetSeirialForNewClient();
+	SERIAL_TYPE					GetSerialForNewClient();
 
-	void		SendPacket(int serial, unsigned char* packet) const;
-	void		SendSystemMessage(int serial, const std::string& msg) const;
+	void		SendPacket(SERIAL_TYPE serial, unsigned char* packet) const;
+	void		SendSystemMessage(SERIAL_TYPE serial, const std::string& msg) const;
 	
-	void		ProcessPacket(int serial, unsigned char* packet);
-	void		ProcessUserClose(int serial);
-	void		ProcessLogin(int serial, unsigned char* packet);
-	void		ProcessChannelList(int serial);
-	void		ProcessChatting(int serial, unsigned char* packet);
-	void		ProcessKick(int serial, unsigned char* packet);
-	void		ProcessChannelChange(int serial, unsigned char* packet);
+	void		ProcessPacket(SERIAL_TYPE serial, unsigned char* packet);
+	void		ProcessUserClose(SERIAL_TYPE serial);
+	void		ProcessLogin(SERIAL_TYPE serial, unsigned char* packet);
+	void		ProcessChannelList(SERIAL_TYPE serial);
+	void		ProcessChatting(SERIAL_TYPE serial, unsigned char* packet);
+	void		ProcessKick(SERIAL_TYPE serial, unsigned char* packet);
+	void		ProcessChannelChange(SERIAL_TYPE serial, unsigned char* packet);
 
 
 //Debug
-	int							DebugUserCount();
-	std::vector<std::string>	DebugCustomChannels();
+	int									DebugUserCount();
+	std::vector<std::string>			DebugCustomChannels();
 //Debug
 
 
@@ -60,30 +64,32 @@ private:
 	void Initialize();
 	void ShutDown();
 
-	int				GetRandomPublicChannelIndex() const;
-	void			BroadcastToChannel(const std::string& channelName, unsigned char* packet);
+	SERIAL_TYPE				GetRandomPublicChannelIndex() const;
+	void					BroadcastToChannel(const std::string& channelName, unsigned char* packet);
 
-	void			HandleUserLeave(int leaver, bool isKicked, Channel* channel);
-	void			ConnectToRandomPublicChannel(int serial);
-	bool			ConnectToChannel(int serial, const std::string& channelName);
+	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, Channel* channel);
+	void					ConnectToRandomPublicChannel(SERIAL_TYPE serial);
+	bool					ConnectToChannel(SERIAL_TYPE serial, const std::string& channelName);
 	
-	int				FindClientSerialFromName(const std::string& clientName);
-	Channel*		FindChannelFromName(const std::string& channelName);
+	SERIAL_TYPE				FindClientSerialFromName(const std::string& clientName);
+	Channel*				FindChannelFromName(const std::string& channelName);
 
-	void			AddNewCustomChannel(const std::string& channelName);
+	void					AddNewCustomChannel(const std::string& channelName);
 
 private:
-	HANDLE				hIocp;
-	bool				isShutdown;
+	HANDLE					hIocp;
+	bool					isShutdown;
 
 	std::vector<std::unique_ptr<std::thread>>		workerThreads;
 	std::unique_ptr<std::thread>					acceptThread;
 
-	std::mutex										loginLock;
 	std::mutex										clientNameLock;
 	std::mutex										customChannelsLock;
 	
 	std::vector<Client>								clients;
+
+	std::unordered_map<std::string, SERIAL_TYPE>	usedClientNames;
+	concurrency::concurrent_queue<SERIAL_TYPE>		validClientSerials;
 
 	std::vector<PublicChannel>						publicChannels;
 	std::vector<CustomChannel>						customChannels;

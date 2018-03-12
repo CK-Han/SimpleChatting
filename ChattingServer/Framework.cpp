@@ -51,6 +51,9 @@ void Framework::Initialize()
 	publicChannels.emplace_back("Sample7");
 	publicChannels.emplace_back("Sample8");
 	
+	for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
+		validClientSerials.push(i);
+
 	for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
 		workerThreads.emplace_back(new std::thread(WorkerThreadStart));
 
@@ -71,7 +74,7 @@ void Framework::ShutDown()
 
 ////////////////////////////////////////////////////////////////////////////
 //Send to Client
-void Framework::SendPacket(int serial, unsigned char* packet) const
+void Framework::SendPacket(Framework::SERIAL_TYPE serial, unsigned char* packet) const
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial
 		|| packet == nullptr) return;
@@ -99,7 +102,7 @@ void Framework::SendPacket(int serial, unsigned char* packet) const
 	}
 }
 
-void Framework::SendSystemMessage(int serial, const std::string& msg) const
+void Framework::SendSystemMessage(Framework::SERIAL_TYPE serial, const std::string& msg) const
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return;
 	if (GetClient(serial).IsLogin == false) return;
@@ -115,7 +118,7 @@ void Framework::SendSystemMessage(int serial, const std::string& msg) const
 
 ////////////////////////////////////////////////////////////////////////////
 //Received from Client
-void Framework::ProcessPacket(int serial, unsigned char* packet)
+void Framework::ProcessPacket(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial
 		|| packet == nullptr) return;
@@ -145,7 +148,7 @@ void Framework::ProcessPacket(int serial, unsigned char* packet)
 }
 
 
-void Framework::ProcessUserClose(int serial)
+void Framework::ProcessUserClose(Framework::SERIAL_TYPE serial)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return;
 	auto& client = GetClient(serial);
@@ -159,29 +162,33 @@ void Framework::ProcessUserClose(int serial)
 	}
 	::closesocket(client.ClientSocket);
 
-	std::unique_lock<std::mutex> ulLogin(loginLock);
+	std::unique_lock<std::mutex> ulName(clientNameLock);
+	usedClientNames.erase(client.UserName);
+	ulName.unlock();
+
 	client.IsLogin = false;
 	client.UserName.clear();
 	client.ChannelName.clear();
+	validClientSerials.push(serial);
 }
 
-void Framework::ProcessLogin(int serial, unsigned char* packet)
+void Framework::ProcessLogin(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial
 		|| packet == nullptr) return;
-
-	auto& client = GetClient(serial);
-	if (client.IsLogin == false) return;
 
 	packet_login* from_packet = reinterpret_cast<packet_login*>(packet);
 	bool isDuplicated = false;
 
 	std::unique_lock<std::mutex> ulName(clientNameLock);
-	if (SERIAL_ERROR != FindClientSerialFromName(from_packet->User))
+	auto iterName = usedClientNames.find(from_packet->User);
+	if (iterName != usedClientNames.cend())
 		isDuplicated = true;
-
-	if(isDuplicated == false) //선점 후 락 해제
-		client.UserName = from_packet->User;
+	else
+	{
+		clients[serial].UserName = from_packet->User;
+		usedClientNames.insert(std::make_pair(from_packet->User, serial));
+	}
 	ulName.unlock();
 
 	packet_login to_packet;
@@ -200,7 +207,7 @@ void Framework::ProcessLogin(int serial, unsigned char* packet)
 	}
 }
 
-void Framework::ProcessChannelList(int serial)
+void Framework::ProcessChannelList(Framework::SERIAL_TYPE serial)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return;
 	if (GetClient(serial).IsLogin == false) return;
@@ -219,7 +226,7 @@ void Framework::ProcessChannelList(int serial)
 	std::memcpy(&channelList_packet.PublicChannelNames, publicChannelNames.c_str(), publicChannelNames.size());
 	
 	std::unique_lock<std::mutex> ulCustom(customChannelsLock);
-	unsigned int customChannelCount = 0;
+	unsigned int customChannelCount = 0;	
 	for (auto& customChannel : customChannels)
 	{
 		if (customChannel.IsCreated()) 
@@ -233,7 +240,7 @@ void Framework::ProcessChannelList(int serial)
 	SendPacket(serial, reinterpret_cast<unsigned char *>(&channelList_packet));
 }
 
-void Framework::ProcessChatting(int serial, unsigned char* packet)
+void Framework::ProcessChatting(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial
 		|| packet == nullptr) return;
@@ -249,7 +256,7 @@ void Framework::ProcessChatting(int serial, unsigned char* packet)
 	}
 	else
 	{
-		int listnerSerial = FindClientSerialFromName(from_packet->Listner);
+		Framework::SERIAL_TYPE listnerSerial = FindClientSerialFromName(from_packet->Listner);
 		if (SERIAL_ERROR != listnerSerial)
 		{
 			SendPacket(serial, packet);
@@ -260,7 +267,7 @@ void Framework::ProcessChatting(int serial, unsigned char* packet)
 	}
 }
 
-void Framework::ProcessKick(int serial, unsigned char* packet)
+void Framework::ProcessKick(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial
 		|| packet == nullptr) return;
@@ -269,7 +276,7 @@ void Framework::ProcessKick(int serial, unsigned char* packet)
 
 	packet_kick_user* from_packet = reinterpret_cast<packet_kick_user*>(packet);
 	
-	int targetSerial = FindClientSerialFromName(from_packet->Target);
+	Framework::SERIAL_TYPE targetSerial = FindClientSerialFromName(from_packet->Target);
 	if (targetSerial == SERIAL_ERROR)
 	{
 		SendSystemMessage(serial, "***System*** 해당 유저는 접속중이 아닙니다.");
@@ -304,7 +311,7 @@ void Framework::ProcessKick(int serial, unsigned char* packet)
 	ConnectToRandomPublicChannel(target.Serial);
 }
 
-void Framework::ProcessChannelChange(int serial, unsigned char* packet)
+void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial
 		|| packet == nullptr) return;
@@ -344,14 +351,14 @@ void Framework::ProcessChannelChange(int serial, unsigned char* packet)
 
 
 //return [-1, MAX_PUBLIC_CHANNEL_COUNT), '-1' means public channels are full
-int Framework::GetRandomPublicChannelIndex() const
+Framework::SERIAL_TYPE Framework::GetRandomPublicChannelIndex() const
 {
 	const unsigned int publicChannelCount = publicChannels.size();
 	std::uniform_int_distribution<int> uid(0, publicChannelCount - 1);
 	static std::default_random_engine dre;
 
 	std::vector<bool> channelIsFull(publicChannelCount, false);
-	int randSlot = -1;
+	Framework::SERIAL_TYPE randSlot = SERIAL_ERROR;
 	size_t fullChannelCount = 0;
 
 	while (true)
@@ -384,7 +391,7 @@ void Framework::BroadcastToChannel(const std::string& channelName, unsigned char
 	}
 }
 
-void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
+void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, Channel* channel)
 {
 	if (leaver < 0 || MAX_CLIENT_COUNT <= leaver) return;
 
@@ -444,14 +451,15 @@ void Framework::HandleUserLeave(int leaver, bool isKicked, Channel* channel)
 	}
 }
 
-void Framework::ConnectToRandomPublicChannel(int serial)
+void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 {
 	bool isConnected = false;
 	while (isConnected == false)
 	{
-		int randSlot = GetRandomPublicChannelIndex();
+		Framework::SERIAL_TYPE randSlot = GetRandomPublicChannelIndex();
 		if (randSlot == -1)
-		{	//모든 공개채널이 가득 찬 상태, 스타크래프트1 배틀넷의 Void 채널과 유사
+		{	//모든 공개채널이 가득 찬 상태로, 채널에 입장하지 못한 상태
+			//스타크래프트1 배틀넷의 Void 채널과 유사
 			SendSystemMessage(serial, "***System*** 모든 공개채널에 인원이 가득 찼습니다.");
 			std::cout << "all public channels are full\n";
 			return;
@@ -461,7 +469,7 @@ void Framework::ConnectToRandomPublicChannel(int serial)
 	}
 }
 
-bool Framework::ConnectToChannel(int serial, const std::string& channelName)
+bool Framework::ConnectToChannel(Framework::SERIAL_TYPE serial, const std::string& channelName)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return false;
 
@@ -526,16 +534,15 @@ bool Framework::ConnectToChannel(int serial, const std::string& channelName)
 	return true;
 }
 
-int Framework::FindClientSerialFromName(const std::string& clientName)
+Framework::SERIAL_TYPE Framework::FindClientSerialFromName(const std::string& clientName)
 {
-	for (int i = 0; i < MAX_CLIENT_COUNT; ++i)
-	{
-		if (clients[i].IsLogin == false) continue;
-		if (clients[i].UserName == clientName)
-			return i;
-	}
+	std::unique_lock<std::mutex> ulName(clientNameLock);
 
-	return SERIAL_ERROR;
+	auto iterName = usedClientNames.find(clientName);
+	if (iterName != usedClientNames.cend())
+		return iterName->second;
+	else
+		return SERIAL_ERROR;
 }
 
 Channel* Framework::FindChannelFromName(const std::string& channelName)
@@ -564,18 +571,21 @@ Channel* Framework::FindChannelFromName(const std::string& channelName)
 	return channel;
 }
 
-int Framework::GetSeirialForNewClient()
+Framework::SERIAL_TYPE Framework::GetSerialForNewClient()
 {
-	std::unique_lock<std::mutex> ulLogin(loginLock);
-	for (int i = 0; i < MAX_CLIENT_COUNT; ++i)
+	SERIAL_TYPE newSerial = SERIAL_ERROR;
+	using namespace std::chrono;
+
+	auto beginTime = high_resolution_clock::now();
+	while (false == validClientSerials.try_pop(newSerial))
 	{
-		if (clients[i].IsLogin == true) continue;
-		
-		clients[i].IsLogin = true;
-		return i;
+		auto elapsedTime = duration_cast<milliseconds>(high_resolution_clock::now() - beginTime);
+		if (LOGIN_TIMEOUT_MILLISECONDS <= elapsedTime.count())
+			return SERIAL_ERROR;
 	}
 
-	return SERIAL_ERROR;
+	clients[newSerial].IsLogin = true;
+	return newSerial;
 }
 
 
@@ -591,7 +601,7 @@ void Framework::AddNewCustomChannel(const std::string& channelName)
 
 	if (iter == customChannels.cend())
 	{
-		for (int i = 0; i < MAX_CLIENT_COUNT; ++i)
+		for (Framework::SERIAL_TYPE i = 0; i < MAX_CLIENT_COUNT; ++i)
 		{
 			if (customChannels[i].IsCreated() == true) continue;
 
@@ -606,11 +616,11 @@ void Framework::AddNewCustomChannel(const std::string& channelName)
 }
 
 
-int Framework::DebugUserCount()
+Framework::SERIAL_TYPE Framework::DebugUserCount()
 {
-	int userCount = 0;
-	std::unique_lock<std::mutex> ulLogin(loginLock);
-	for (int i = 0; i < MAX_CLIENT_COUNT; ++i)
+	//lock이 없어 정확하지 않음
+	Framework::SERIAL_TYPE userCount = 0;
+	for (Framework::SERIAL_TYPE i = 0; i < MAX_CLIENT_COUNT; ++i)
 	{
 		if (clients[i].IsLogin) userCount++;
 	}
@@ -686,7 +696,7 @@ namespace
 				continue;
 			}
 
-			int newSerial = framework.GetSeirialForNewClient();
+			Framework::SERIAL_TYPE newSerial = framework.GetSerialForNewClient();
 			if (newSerial == Framework::SERIAL_ERROR)
 			{
 				::closesocket(newClientSocket);
@@ -694,7 +704,7 @@ namespace
 				continue;
 			}
 
-			//새 클라이언트 생성, 자료구조에 삽입
+			//새 클라이언트 생성, 자료구조에 등록
 			Client& client = framework.GetClient(newSerial);
 
 			client.Serial = newSerial;
