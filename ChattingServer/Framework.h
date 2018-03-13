@@ -23,6 +23,7 @@ public:
 	static const unsigned int	LOGIN_TIMEOUT_MILLISECONDS = 3000;
 	static const unsigned int	NUM_WORKER_THREADS = 8;
 	static const unsigned int	MAX_CLIENT_COUNT = 10000;
+	static const unsigned int	MAX_CUSTOM_COUNT = 10000;
 	static const SERIAL_TYPE	SERIAL_ERROR = -1;
 
 	static Framework& GetInstance()
@@ -34,9 +35,7 @@ public:
 	bool						IsShutDown() const { return isShutdown; }
 
 	HANDLE						GetIocpHandle() const { return hIocp; }
-	const Client&				GetClient(SERIAL_TYPE index) const { return clients[index]; }
-	Client&						GetClient(SERIAL_TYPE index) { return clients[index]; }
-	
+	Client&						GetClient(SERIAL_TYPE serial) { return *clients[serial]; }
 	SERIAL_TYPE					GetSerialForNewClient();
 
 	void		SendPacket(SERIAL_TYPE serial, unsigned char* packet) const;
@@ -86,12 +85,12 @@ private:
 	std::mutex										clientNameLock;
 	std::mutex										customChannelsLock;
 	
-	std::vector<Client>								clients;
+	std::vector<std::unique_ptr<Client>>			clients;
 
 	std::unordered_map<std::string, SERIAL_TYPE>	usedClientNames;
 	concurrency::concurrent_queue<SERIAL_TYPE>		validClientSerials;
 
-	std::vector<PublicChannel>						publicChannels;
-	std::vector<CustomChannel>						customChannels;
+	std::vector<std::unique_ptr<PublicChannel>>		publicChannels;
+	std::vector<std::unique_ptr<CustomChannel>>		customChannels;
 };
 

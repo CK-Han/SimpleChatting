@@ -8,19 +8,12 @@ Channel::Channel(const std::string& name)
 {
 }
 
-Channel::Channel(const Channel& other)
-	: channelName(other.channelName)
-	, channelMaster(other.channelMaster)
-	, clientsInChannel(other.clientsInChannel)
-{
-}
-
 Channel::~Channel()
 {
 }
 
 
-void Channel::Enter(Client* client)
+void Channel::Enter(const Client* client)
 {
 	auto iter = std::find_if(clientsInChannel.cbegin(), clientsInChannel.cend(), 
 		[&client](const Client* user)
@@ -30,12 +23,11 @@ void Channel::Enter(Client* client)
 
 	if (iter == clientsInChannel.cend())
 	{
-		client->ChannelName = this->channelName;
 		clientsInChannel.push_back(client);
 	}
 }
 
-void Channel::Exit(Client* client)
+void Channel::Exit(const Client* client)
 {
 	auto iter = std::find_if(clientsInChannel.cbegin(), clientsInChannel.cend(),
 		[client](const Client* user)
@@ -75,7 +67,7 @@ CustomChannel::~CustomChannel()
 }
 
 
-void CustomChannel::Enter(Client* client)
+void CustomChannel::Enter(const Client* client)
 {
 	if (GetClientsInChannel().size() == 0)
 	{
@@ -86,7 +78,7 @@ void CustomChannel::Enter(Client* client)
 }
 
 
-void CustomChannel::Exit(Client* client)
+void CustomChannel::Exit(const Client* client)
 {
 	Channel::Exit(client);
 
