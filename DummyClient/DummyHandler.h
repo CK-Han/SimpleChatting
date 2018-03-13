@@ -54,8 +54,8 @@ class DummyHandler
 {
 public:
 	static constexpr unsigned int NUM_WORKER_THREADS	 = 8;
-	static constexpr unsigned int START_DUMMY_COUNT		 = 100;
-	static constexpr unsigned int MAX_DUMMY_COUNT		 = 4000;
+	static constexpr unsigned int START_DUMMY_COUNT		 = 2000;
+	static constexpr unsigned int MAX_DUMMY_COUNT		 = 10000;
 	static constexpr unsigned int PACKET_DELAY_TIME		 = 2000;
 
 public:
@@ -119,7 +119,6 @@ private:
 	std::mutex										timerLock;
 
 	std::vector<std::pair<Dummy, Overlap_Info>>		dummies;
-	std::set<std::string>							names;
 
 	std::priority_queue < Event_Info, std::vector<Event_Info>, Event_Compare> timerQueue;
 };

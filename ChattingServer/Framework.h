@@ -21,6 +21,7 @@ public:
 	static const unsigned int	GQCS_TIMEOUT_MILLISECONDS = 3000;
 	static const unsigned int	ACCEPT_TIMEOUT_SECONDS = 3;
 	static const unsigned int	LOGIN_TIMEOUT_MILLISECONDS = 3000;
+	static const unsigned int	MAKECUSTOM_TIMEOUT_MILLISECONDS = 3000;
 	static const unsigned int	NUM_WORKER_THREADS = 8;
 	static const unsigned int	MAX_CLIENT_COUNT = 10000;
 	static const unsigned int	MAX_CUSTOM_COUNT = 10000;
@@ -63,15 +64,16 @@ private:
 	void Initialize();
 	void ShutDown();
 
-	SERIAL_TYPE				GetRandomPublicChannelIndex() const;
+	SERIAL_TYPE				GetRandomPublicChannelSerial() const;
+	SERIAL_TYPE				GetSerialForNewCustomChannel();
 	void					BroadcastToChannel(const std::string& channelName, unsigned char* packet);
 
-	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, Channel* channel);
+	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel);
 	void					ConnectToRandomPublicChannel(SERIAL_TYPE serial);
 	bool					ConnectToChannel(SERIAL_TYPE serial, const std::string& channelName);
 	
-	SERIAL_TYPE				FindClientSerialFromName(const std::string& clientName);
-	Channel*				FindChannelFromName(const std::string& channelName);
+	SERIAL_TYPE						FindClientSerialFromName(const std::string& clientName);
+	std::shared_ptr<Channel>		FindChannelFromName(const std::string& channelName);
 
 	void					AddNewCustomChannel(const std::string& channelName);
 
@@ -86,11 +88,14 @@ private:
 	std::mutex										customChannelsLock;
 	
 	std::vector<std::unique_ptr<Client>>			clients;
-
+	
 	std::unordered_map<std::string, SERIAL_TYPE>	usedClientNames;
-	concurrency::concurrent_queue<SERIAL_TYPE>		validClientSerials;
+	std::unordered_map<std::string, SERIAL_TYPE>	usedCustomChannelNames;
 
-	std::vector<std::unique_ptr<PublicChannel>>		publicChannels;
-	std::vector<std::unique_ptr<CustomChannel>>		customChannels;
+	concurrency::concurrent_queue<SERIAL_TYPE>		validClientSerials;
+	concurrency::concurrent_queue<SERIAL_TYPE>		validCustomChannelSerials;
+
+	std::vector<std::shared_ptr<PublicChannel>>		publicChannels;
+	std::vector<std::shared_ptr<CustomChannel>>		customChannels;
 };
 

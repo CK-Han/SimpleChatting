@@ -34,31 +34,34 @@ void Framework::Initialize()
 	for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
 		clients.emplace_back(std::make_unique<Client>());
 
-	//MAX_PUBLIC_CHANNEL_COUNT
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("FreeChannel"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("ForTeenagers"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("For20s"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("For3040s"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("AboutGame"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("AboutStudy"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("AboutHobby"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("AboutExcercise"));
+	//protocol의 MAX_PUBLIC_CHANNEL_COUNT 고려
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("FreeChannel"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("ForTeenagers"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("For20s"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("For3040s"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutGame"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutStudy"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutHobby"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutExcercise"));
 								
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("Sample1"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("Sample2"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("Sample3"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("Sample4"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("Sample5"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("Sample6"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("Sample7"));
-	publicChannels.emplace_back(std::make_unique<PublicChannel>("Sample8"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample1"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample2"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample3"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample4"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample5"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample6"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample7"));
+	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample8"));
 	
 	customChannels.reserve(MAX_CUSTOM_COUNT);
 	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
-		customChannels.emplace_back(std::make_unique<CustomChannel>(""));
+		customChannels.emplace_back(std::make_shared<CustomChannel>(""));
 
 	for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
 		validClientSerials.push(i);
+
+	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
+		validCustomChannelSerials.push(i);
 
 	for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
 		workerThreads.emplace_back(new std::thread(WorkerThreadStart));
@@ -157,12 +160,12 @@ void Framework::ProcessPacket(Framework::SERIAL_TYPE serial, unsigned char* pack
 void Framework::ProcessUserClose(Framework::SERIAL_TYPE serial)
 {
 	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return;
-	auto& client =GetClient(serial);
+	auto& client = GetClient(serial);
 	if (client.IsLogin == false) return;
 
 	if (client.ChannelName.empty() == false)
 	{	//채널이 존재한다 -> 채널에 존재하는 유저들에게 이 유저가 떠남을 알린다.
-		Channel* channel = FindChannelFromName(client.ChannelName);
+		auto channel = FindChannelFromName(client.ChannelName);
 		if(channel)
 			HandleUserLeave(serial, false, channel);
 	}
@@ -290,7 +293,7 @@ void Framework::ProcessKick(Framework::SERIAL_TYPE serial, unsigned char* packet
 	}
 	auto& target = clients[targetSerial];
 
-	Channel* channel = FindChannelFromName(from_packet->Channel);
+	auto channel = FindChannelFromName(from_packet->Channel);
 	if (channel == nullptr)
 	{
 		SendSystemMessage(serial, "***System*** 요청에 문제가 발생하였습니다.");
@@ -326,11 +329,11 @@ void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned cha
 	if (client.IsLogin == false) return;
 
 	packet_channel_enter* from_packet = reinterpret_cast<packet_channel_enter*>(packet);
-	
+	if (from_packet->ChannelName == client.ChannelName) return;
 
 	bool isChannelChanged = false;
-	Channel* channel = FindChannelFromName(from_packet->ChannelName);
-	Channel* prevChannel = FindChannelFromName(client.ChannelName);
+	auto channel = FindChannelFromName(from_packet->ChannelName);
+	auto prevChannel = FindChannelFromName(client.ChannelName);
 
 	if (channel)
 	{
@@ -341,11 +344,10 @@ void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned cha
 	else //새 커스텀채널 생성
 	{
 		AddNewCustomChannel(from_packet->ChannelName);
-		ConnectToChannel(serial, from_packet->ChannelName);
-		isChannelChanged = true;
+		isChannelChanged = ConnectToChannel(serial, from_packet->ChannelName);
 	}
 
-	if (isChannelChanged && prevChannel)
+	if (isChannelChanged && (prevChannel != nullptr))
 	{
 		HandleUserLeave(serial, false, prevChannel);
 	}
@@ -357,7 +359,7 @@ void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned cha
 
 
 //return [-1, MAX_PUBLIC_CHANNEL_COUNT), '-1' means public channels are full
-Framework::SERIAL_TYPE Framework::GetRandomPublicChannelIndex() const
+Framework::SERIAL_TYPE Framework::GetRandomPublicChannelSerial() const
 {
 	const unsigned int publicChannelCount = publicChannels.size();
 	std::uniform_int_distribution<int> uid(0, publicChannelCount - 1);
@@ -383,10 +385,26 @@ Framework::SERIAL_TYPE Framework::GetRandomPublicChannelIndex() const
 	}
 }
 
+Framework::SERIAL_TYPE Framework::GetSerialForNewCustomChannel()
+{
+	using namespace std::chrono;
+	SERIAL_TYPE customSerial = SERIAL_ERROR;
+
+	auto beginTime = high_resolution_clock::now();
+	while (false == validCustomChannelSerials.try_pop(customSerial))
+	{
+		auto elapsedTime = duration_cast<milliseconds>(high_resolution_clock::now() - beginTime);
+		if (MAKECUSTOM_TIMEOUT_MILLISECONDS <= elapsedTime.count())
+			return SERIAL_ERROR;
+	}
+
+	return customSerial;
+}
+
 void Framework::BroadcastToChannel(const std::string& channelName, unsigned char* packet)
 {
 	if (packet == nullptr) return;
-	Channel* channel = FindChannelFromName(channelName);
+	auto channel = FindChannelFromName(channelName);
 
 	if (channel)
 	{
@@ -397,7 +415,7 @@ void Framework::BroadcastToChannel(const std::string& channelName, unsigned char
 	}
 }
 
-void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, Channel* channel)
+void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel)
 {
 	if (leaver < 0 || MAX_CLIENT_COUNT <= leaver) return;
 
@@ -424,9 +442,13 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, Ch
 
 		if (channel->GetUserCount() == 0)
 		{	//채널 파기, 본 조건문이 진행되는 경우는 channel이 반드시 CustomChannel 이다.
-			CustomChannel* closedChannel = reinterpret_cast<CustomChannel*>(channel);
+			std::unique_lock<std::mutex> ulCustom(customChannelsLock);
+			usedCustomChannelNames.erase(channel->GetChannelName());
+			ulCustom.unlock();
+
+			CustomChannel* closedChannel = reinterpret_cast<CustomChannel*>(channel.get());
 			closedChannel->CloseChannel();
-			
+	
 			return; //후속처리(채널에 남은 유저들에게 정보 전송)가 필요하지 않아 return
 		}
 	}
@@ -462,7 +484,7 @@ void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 	bool isConnected = false;
 	while (isConnected == false)
 	{
-		Framework::SERIAL_TYPE randSlot = GetRandomPublicChannelIndex();
+		Framework::SERIAL_TYPE randSlot = GetRandomPublicChannelSerial();
 		if (randSlot == -1)
 		{	//모든 공개채널이 가득 찬 상태로, 채널에 입장하지 못한 상태
 			//스타크래프트1 배틀넷의 Void 채널과 유사
@@ -482,7 +504,7 @@ bool Framework::ConnectToChannel(Framework::SERIAL_TYPE serial, const std::strin
 	auto& client =GetClient(serial);
 	if (client.IsLogin == false) return false;
 
-	Channel* channel = FindChannelFromName(channelName);
+	auto channel = FindChannelFromName(channelName);
 	if (channel == nullptr)
 	{
 		std::cout << "ConnectToChannel() - cannot find channel\n";
@@ -551,30 +573,25 @@ Framework::SERIAL_TYPE Framework::FindClientSerialFromName(const std::string& cl
 		return SERIAL_ERROR;
 }
 
-Channel* Framework::FindChannelFromName(const std::string& channelName)
+std::shared_ptr<Channel> 
+	Framework::FindChannelFromName(const std::string& channelName)
 {
-	Channel* channel = nullptr;
 	//공개방은 변경되지 않는다.
 	for (auto& ch : publicChannels)
 	{
 		if (channelName == ch->GetChannelName())
 		{
-			channel = &(*ch);
-			return channel;
+			return ch;
 		}
 	}
 
 	std::unique_lock<std::mutex> ulCustom(customChannelsLock);
-	for (auto& ch : customChannels)
-	{
-		if (channelName == ch->GetChannelName())
-		{
-			channel = &(*ch);
-			return channel;
-		}
-	}
 
-	return channel;
+	auto iterName = usedCustomChannelNames.find(channelName);
+	if (iterName != usedCustomChannelNames.cend())
+		return customChannels[iterName->second];
+	else
+		return{ nullptr };
 }
 
 Framework::SERIAL_TYPE Framework::GetSerialForNewClient()
@@ -594,32 +611,29 @@ Framework::SERIAL_TYPE Framework::GetSerialForNewClient()
 	return newSerial;
 }
 
-
 void Framework::AddNewCustomChannel(const std::string& channelName)
 {
+	auto customSerial = GetSerialForNewCustomChannel();
+	if (customSerial == SERIAL_ERROR)
+	{
+		std::cout << "AddNewCustomChannel() error - validCustomSerialQueue is empty\n";
+		return;
+	}
+
 	std::unique_lock<std::mutex> ulCustom(customChannelsLock);
 
-	auto iter = std::find_if(customChannels.cbegin(), customChannels.cend(),
-		[&channelName](const std::unique_ptr<CustomChannel>& cc)
+	auto iterName = usedCustomChannelNames.find(channelName);
+	if (iterName != usedCustomChannelNames.cend())
 	{
-		return cc->GetChannelName() == channelName;
-	});
-
-	if (iter == customChannels.cend())
-	{
-		for (Framework::SERIAL_TYPE i = 0; i < MAX_CLIENT_COUNT; ++i)
-		{
-			if (customChannels[i]->IsCreated() == true) continue;
-
-			customChannels[i]->InitializeChannel(channelName);
-			break;
-		}
-	}
-	else
-	{
+		validCustomChannelSerials.push(customSerial);
 		std::cout << "AddNewCustomChannel() error - duplicated channelName\n";
+		return;
 	}
+
+	usedCustomChannelNames.insert(std::make_pair(channelName, customSerial));
+	customChannels[customSerial]->InitializeChannel(channelName);
 }
+
 
 
 Framework::SERIAL_TYPE Framework::DebugUserCount()
