@@ -6,6 +6,8 @@
 #include <mutex>
 #include <queue>
 #include <set>
+#include <random>
+
 
 enum Overlap_Operation
 {
@@ -54,9 +56,12 @@ class DummyHandler
 {
 public:
 	static constexpr unsigned int NUM_WORKER_THREADS	 = 8;
-	static constexpr unsigned int START_DUMMY_COUNT		 = 2000;
+	static constexpr unsigned int START_DUMMY_COUNT		 = 1000;
 	static constexpr unsigned int MAX_DUMMY_COUNT		 = 10000;
 	static constexpr unsigned int PACKET_DELAY_TIME		 = 2000;
+
+private:
+	static std::default_random_engine RANDOM_ENGINE;
 
 public:
 	static DummyHandler* GetInstance()
