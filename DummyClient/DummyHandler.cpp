@@ -98,8 +98,6 @@ bool DummyHandler::AddDummy(int beginSerial, int count, const std::string& ip)
 	{
 		Dummy& dummy = dummies[i].first;
 		Overlap_Exp& recvOverlap = dummies[i].second.recvOverlapExp;
-		Overlap_Exp& sendOverlap = dummies[i].second.sendOverlapExp;
-		Overlap_Exp& timerOverlap = dummies[i].second.timerOverlapExp;
 
 		if (false == dummy.Connect(ip.c_str()))
 		{
@@ -126,28 +124,17 @@ bool DummyHandler::AddDummy(int beginSerial, int count, const std::string& ip)
 				std::cout << "AddDummy() - WSARecv " << "error code : " << error_no << std::endl;
 		}
 
-
-		::ZeroMemory(&sendOverlap, sizeof(sendOverlap));
-		sendOverlap.WsaBuf.len = sizeof(sendOverlap.Iocp_Buffer);
-		sendOverlap.WsaBuf.buf = reinterpret_cast<CHAR*>(sendOverlap.Iocp_Buffer);
-		sendOverlap.Operation = OPERATION_SEND;
-		
-		::ZeroMemory(&timerOverlap, sizeof(timerOverlap));
-		timerOverlap.WsaBuf.len = sizeof(timerOverlap.Iocp_Buffer);
-		timerOverlap.WsaBuf.buf = reinterpret_cast<CHAR*>(timerOverlap.Iocp_Buffer);
-		timerOverlap.Operation = OPERATION_RANDPACKET;
-
-		packet_login* my_packet = reinterpret_cast<packet_login*>(sendOverlap.Iocp_Buffer);
-		my_packet->Size = sizeof(packet_login);
-		my_packet->Type = PACKET_LOGIN;
-		my_packet->Created = false;
+		packet_login loginPacket;
+		::ZeroMemory(&loginPacket, sizeof(loginPacket));
+		loginPacket.Size = sizeof(packet_login);
+		loginPacket.Type = PACKET_LOGIN;
+		loginPacket.Created = false;
 		std::string id("Dummy" + std::to_string(i));
-		std::memcpy(&(my_packet->User), id.c_str(), id.size());
+		std::memcpy(&(loginPacket.User), id.c_str(), id.size());
 		
-		SendPacket(i, reinterpret_cast<unsigned char*>(my_packet));
+		SendPacket(i, reinterpret_cast<unsigned char*>(&loginPacket));
 
 		++lastSerial;
-		//::Sleep(10);
 	}
 
 	std::cout << count << "명 로그인 완료\n";
@@ -178,17 +165,20 @@ bool DummyHandler::CloseDummy(int count)
 //Packet Handling
 void DummyHandler::SendPacket(int serial, unsigned char* packet)
 {
-	if (serial < 0 || MAX_DUMMY_COUNT <= serial || packet == nullptr)
+	if (serial < 0 || MAX_DUMMY_COUNT <= serial
+		|| packet == nullptr)
 		return;
 
-	Dummy& dummy = dummies[serial].first;
-	Overlap_Exp& sendOverlapExp = dummies[serial].second.sendOverlapExp;
-	sendOverlapExp.WsaBuf.buf = reinterpret_cast<CHAR*>(sendOverlapExp.Iocp_Buffer);
-	sendOverlapExp.WsaBuf.len = GetPacketSize(packet);
-	sendOverlapExp.Operation = OPERATION_SEND;
+	Overlap_Exp* overlapExp = new Overlap_Exp;
+	::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
 
-	int ret = ::WSASend(dummy.clientSocket, &sendOverlapExp.WsaBuf, 1, NULL, 0,
-		&sendOverlapExp.Original_Overlap, NULL);
+	overlapExp->Operation = OPERATION_SEND;
+	overlapExp->WsaBuf.buf = reinterpret_cast<CHAR *>(overlapExp->Iocp_Buffer);
+	overlapExp->WsaBuf.len = GetPacketSize(packet);
+	memcpy(overlapExp->Iocp_Buffer, packet, overlapExp->WsaBuf.len);
+
+	int ret = ::WSASend(dummies[serial].first.GetSocket(), &overlapExp->WsaBuf, 1, NULL, 0,
+		&overlapExp->Original_Overlap, NULL);
 
 	if (0 != ret)
 	{
@@ -280,9 +270,9 @@ void DummyHandler::RequestRandomPacket(int serial)
 	else if (COEF_WHISPER <= coef && coef < COEF_CHANNELLIST)
 		RequestChannelList(serial);
 	else if (COEF_CHANNELLIST <= coef && coef < COEF_CHANNELCHANGE)
-		RequestChannelChange(serial);
+		;// RequestChannelChange(serial);
 	else if (COEF_CHANNELCHANGE <= coef && coef <= COEF_KICK)
-		RequestKick(serial);
+		;// RequestKick(serial);
 
 	AddRandomPacketEvent(serial);
 }
@@ -293,60 +283,55 @@ void DummyHandler::RequestWhisper(int serial)
 	if (serial < 0 || MAX_DUMMY_COUNT <= serial) return;
 
 	Dummy& dummy = dummies[serial].first;
-	Overlap_Exp& sendOverlapExp = dummies[serial].second.sendOverlapExp;
-
+	
 	std::string randomListener = GetRandomUser();
 	if (randomListener.empty() 
 		|| (randomListener == dummy.userName)) 
 		return;
 
-	std::string chat("This is test! ID : " + std::to_string(serial));
+	std::string chat("This is whisper! ID : " + std::to_string(serial));
 	
-	packet_chatting* my_packet = reinterpret_cast<packet_chatting *>(sendOverlapExp.Iocp_Buffer);
-	::ZeroMemory(my_packet, sizeof(packet_chatting));
-	my_packet->Size = sizeof(packet_chatting);
-	my_packet->Type = PACKET_CHATTING;
-	my_packet->IsWhisper = true;
+	packet_chatting chattingPacket;
+	::ZeroMemory(&chattingPacket, sizeof(chattingPacket));
+	chattingPacket.Size = sizeof(chattingPacket);
+	chattingPacket.Type = PACKET_CHATTING;
+	chattingPacket.IsWhisper = true;
 
-	std::memcpy(&(my_packet->Talker), dummy.userName.c_str(), dummy.userName.size());
-	std::memcpy(&(my_packet->Listner), randomListener.c_str(), randomListener.size());
-	std::memcpy(&(my_packet->Chat), chat.c_str(), chat.size());
+	std::memcpy(&(chattingPacket.Talker), dummy.userName.c_str(), dummy.userName.size());
+	std::memcpy(&(chattingPacket.Listner), randomListener.c_str(), randomListener.size());
+	std::memcpy(&(chattingPacket.Chat), chat.c_str(), chat.size());
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(my_packet));
+	SendPacket(serial, reinterpret_cast<unsigned char*>(&chattingPacket));
 }
 
 void DummyHandler::RequestChannelList(int serial)
 {
-	if (serial < 0 || MAX_DUMMY_COUNT <= serial)
-		return;
+	if (serial < 0 || MAX_DUMMY_COUNT <= serial) return;
 
-	Overlap_Exp& sendOverlapExp = dummies[serial].second.sendOverlapExp;
-	packet_channel_list* my_packet = reinterpret_cast<packet_channel_list *>(sendOverlapExp.Iocp_Buffer);
-	::ZeroMemory(my_packet, sizeof(packet_channel_list));
-	my_packet->Size = sizeof(packet_channel_list);
-	my_packet->Type = PACKET_CHANNEL_LIST;
+	packet_channel_list channelListPacket;
+	::ZeroMemory(&channelListPacket, sizeof(channelListPacket));
+	channelListPacket.Size = sizeof(channelListPacket);
+	channelListPacket.Type = PACKET_CHANNEL_LIST;
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(my_packet));
+	SendPacket(serial, reinterpret_cast<unsigned char*>(&channelListPacket));
 }
 
 void DummyHandler::RequestChannelChange(int serial)
 {
-	if (serial < 0 || MAX_DUMMY_COUNT <= serial)
-		return;
+	if (serial < 0 || MAX_DUMMY_COUNT <= serial) return;
 
 	std::string randomChannel = GetRandomChannel();
 	if (randomChannel.empty()
 		|| (randomChannel == dummies[serial].first.userChannel))
 		return;
 
-	Overlap_Exp& sendOverlapExp = dummies[serial].second.sendOverlapExp;
-	packet_channel_enter* my_packet = reinterpret_cast<packet_channel_enter *>(sendOverlapExp.Iocp_Buffer);
-	::ZeroMemory(my_packet, sizeof(packet_channel_enter));
-	my_packet->Size = sizeof(packet_channel_enter);
-	my_packet->Type = PACKET_CHANNEL_ENTER;
-	std::memcpy(&(my_packet->ChannelName), randomChannel.c_str(), randomChannel.size());
+	packet_channel_enter enterPacket;
+	::ZeroMemory(&enterPacket, sizeof(enterPacket));
+	enterPacket.Size = sizeof(enterPacket);
+	enterPacket.Type = PACKET_CHANNEL_ENTER;
+	std::memcpy(&(enterPacket.ChannelName), randomChannel.c_str(), randomChannel.size());
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(my_packet));
+	SendPacket(serial, reinterpret_cast<unsigned char*>(&enterPacket));
 }
 
 void DummyHandler::RequestKick(int serial)
@@ -354,23 +339,23 @@ void DummyHandler::RequestKick(int serial)
 	if (serial < 0 || MAX_DUMMY_COUNT <= serial) return;
 
 	Dummy& dummy = dummies[serial].first;
-	Overlap_Exp& sendOverlapExp = dummies[serial].second.sendOverlapExp;
-
-	packet_kick_user* my_packet = reinterpret_cast<packet_kick_user *>(sendOverlapExp.Iocp_Buffer);
-	::ZeroMemory(my_packet, sizeof(packet_kick_user));
-	my_packet->Size = sizeof(packet_kick_user);
-	my_packet->Type = PACKET_KICK_USER;
-
+	
+	packet_kick_user kickPacket;
+	::ZeroMemory(&kickPacket, sizeof(kickPacket));
+	kickPacket.Size = sizeof(kickPacket);
+	kickPacket.Type = PACKET_KICK_USER;
+	
+	//수정할사항 - 같은 채널에 있는 유저인지 확인해야함
 	std::string randomTarget = GetRandomUser();
 	if (randomTarget.empty()
 		|| (randomTarget == dummy.userName))
 		return;
 
-	std::memcpy(&(my_packet->Target), randomTarget.c_str(), randomTarget.size());
-	std::memcpy(&(my_packet->Kicker), dummy.userName.c_str(), dummy.userName.size());
-	std::memcpy(&(my_packet->Channel), dummy.userChannel.c_str(), dummy.userChannel.size());
+	std::memcpy(&(kickPacket.Target), randomTarget.c_str(), randomTarget.size());
+	std::memcpy(&(kickPacket.Kicker), dummy.userName.c_str(), dummy.userName.size());
+	std::memcpy(&(kickPacket.Channel), dummy.userChannel.c_str(), dummy.userChannel.size());
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(my_packet));
+	SendPacket(serial, reinterpret_cast<unsigned char*>(&kickPacket));
 }
 
 void DummyHandler::RequestChatting(int serial)
@@ -379,20 +364,19 @@ void DummyHandler::RequestChatting(int serial)
 		return;
 
 	Dummy& dummy = dummies[serial].first;
-	Overlap_Exp& sendOverlapExp = dummies[serial].second.sendOverlapExp;
-
-	packet_chatting* my_packet = reinterpret_cast<packet_chatting *>(sendOverlapExp.Iocp_Buffer);
-	::ZeroMemory(my_packet, sizeof(packet_chatting));
-	my_packet->Size = sizeof(packet_chatting);
-	my_packet->Type = PACKET_CHATTING;
-	my_packet->IsWhisper = false;
+	
+	packet_chatting chatPacket;
+	::ZeroMemory(&chatPacket, sizeof(chatPacket));
+	chatPacket.Size = sizeof(chatPacket);
+	chatPacket.Type = PACKET_CHATTING;
+	chatPacket.IsWhisper = false;
 
 	std::string chat("This is test! ID : " + std::to_string(serial));
 
-	std::memcpy(&(my_packet->Talker), dummy.userName.c_str(), dummy.userName.size());
-	std::memcpy(&(my_packet->Chat), chat.c_str(), chat.size());
+	std::memcpy(&(chatPacket.Talker), dummy.userName.c_str(), dummy.userName.size());
+	std::memcpy(&(chatPacket.Chat), chat.c_str(), chat.size());
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(my_packet));
+	SendPacket(serial, reinterpret_cast<unsigned char*>(&chatPacket));
 }
 
 
@@ -515,15 +499,16 @@ namespace
 				{
 					int error_no = WSAGetLastError();
 					if (WSA_IO_PENDING != error_no)
-						std::cout << "AddDummy() - WSARecv " << "error code : " << error_no << std::endl;
+						std::cout << "WorkerThreadStart() - WSARecv " << "error code : " << error_no << std::endl;
 				}
 			}
 			else if (OPERATION_SEND == overlapExp->Operation)
 			{	
-				::ZeroMemory(overlapExp->Iocp_Buffer, sizeof(overlapExp->Iocp_Buffer));
+				delete overlapExp;
 			}
 			else if (OPERATION_RANDPACKET == overlapExp->Operation)
 			{
+				delete overlapExp;
 				//랜덤패킷 발송, 이 함수내에서 다시 타이머 등록한다.
 				handler->RequestRandomPacket(serial);
 			}
@@ -553,9 +538,11 @@ namespace
 				timerQueue.pop();
 				ul.unlock();
 
-				handler->GetDummies()[ev.Serial].second.timerOverlapExp.Operation = ev.Event_Type;
+				Overlap_Exp* overlapExp = new Overlap_Exp;
+				::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
+				overlapExp->Operation = OPERATION_RANDPACKET;
 				PostQueuedCompletionStatus(handler->GetIocpHandle(), sizeof(Overlap_Exp),
-					ev.Serial, &(handler->GetDummies()[ev.Serial].second.timerOverlapExp.Original_Overlap));
+					ev.Serial, &overlapExp->Original_Overlap);
 
 				ul.lock();
 			}

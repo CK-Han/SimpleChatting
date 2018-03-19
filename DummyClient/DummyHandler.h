@@ -1,4 +1,5 @@
 #pragma once
+
 #include "Dummy.h"
 #include <vector>
 #include <string>
@@ -27,14 +28,11 @@ struct Overlap_Exp
 struct Overlap_Info
 {
 	Overlap_Exp				recvOverlapExp;
-	Overlap_Exp				sendOverlapExp;
-	Overlap_Exp				timerOverlapExp;
 
 	int						PacketSize;
 	int						PreviousSize;
 	unsigned char			PacketBuff[MAX_BUFF_SIZE];
 };
-
 
 struct Event_Info
 {
@@ -42,6 +40,7 @@ struct Event_Info
 	int Serial;
 	unsigned int Wakeup_Time;
 };
+
 
 class Event_Compare
 {

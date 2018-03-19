@@ -91,9 +91,18 @@ void Framework::SendPacket(Framework::SERIAL_TYPE serial, unsigned char* packet)
 	auto& client =  clients[serial];
 	if (client->IsLogin == false) return;
 
-	Overlap_Exp* overlapExp = new Overlap_Exp;
-	::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
+	Overlap_Exp* overlapExp = nullptr;
+	try
+	{
+		overlapExp = new Overlap_Exp;
+	}
+	catch(...)
+	{
+		std::cout << "SendPacket() - new error!\n";
+	}
 
+	::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
+	
 	overlapExp->Operation = OPERATION_SEND;
 	overlapExp->WsaBuf.buf = reinterpret_cast<CHAR *>(overlapExp->Iocp_Buffer);
 	overlapExp->WsaBuf.len = GetPacketSize(packet);
@@ -120,7 +129,7 @@ void Framework::SendSystemMessage(Framework::SERIAL_TYPE serial, const std::stri
 	::ZeroMemory(&to_packet, sizeof(to_packet));
 	to_packet.Size = sizeof(to_packet);
 	to_packet.Type = PACKET_SYSTEM;
-	std::memcpy(&to_packet.SystemMessage, msg.c_str(), msg.size());
+	std::memcpy(&to_packet.SystemMessage, msg.c_str(), MAX_SYSTEMMSG_LENGTH);
 
 	SendPacket(serial, reinterpret_cast<unsigned char*>(&to_packet));
 }
