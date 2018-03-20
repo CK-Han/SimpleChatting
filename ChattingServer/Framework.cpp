@@ -463,13 +463,13 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 
 		if (channel->GetUserCount() == 0)
 		{	//채널 파기, 본 조건문이 진행되는 경우는 channel이 반드시 CustomChannel 이다.
+			std::unique_lock<std::mutex> ulCustom(customChannelsLock);
+			validCustomChannelSerials.push(usedCustomChannelNames[channelName]);
+			usedCustomChannelNames.erase(channelName);
+			ulCustom.unlock();
+			
 			CustomChannel* closedChannel = static_cast<CustomChannel*>(channel.get());
 			closedChannel->CloseChannel();
-	
-			std::unique_lock<std::mutex> ulCustom(customChannelsLock);
-			usedCustomChannelNames.erase(channel->GetChannelName());
-			ulCustom.unlock();
-
 			return; //후속처리(채널에 남은 유저들에게 정보 전송)가 필요하지 않아 return
 		}
 	}
