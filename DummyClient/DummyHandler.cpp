@@ -475,8 +475,8 @@ namespace
 
 		while (false == handler->IsShutdown())
 		{
-			DWORD iosize;
-			DWORD serial;
+			DWORD iosize = 0;
+			DWORD serial = 0;
 			Overlap_Exp* overlapExp;
 
 			BOOL result = GetQueuedCompletionStatus(handler->GetIocpHandle(),
@@ -506,12 +506,13 @@ namespace
 			if (OPERATION_RECV == overlapExp->Operation)
 			{
 				unsigned char* buf_ptr = overlapInfo.recvOverlapExp.Iocp_Buffer;
-				int remained = iosize;
+				unsigned int remained = iosize;
 				while (0 < remained)
 				{
 					if (0 == overlapInfo.PacketSize)
 						overlapInfo.PacketSize = GetPacketSize(buf_ptr);
-					int required = overlapInfo.PacketSize - overlapInfo.PreviousSize;
+				
+					unsigned int required = overlapInfo.PacketSize - overlapInfo.PreviousSize;
 
 					if (remained >= required)
 					{	//패킷 조립 완료
@@ -524,7 +525,7 @@ namespace
 					}
 					else
 					{
-						memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousSize, buf_ptr, required);
+						memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousSize, buf_ptr, remained);
 						buf_ptr += remained;
 						overlapInfo.PreviousSize += remained;
 						remained = 0;

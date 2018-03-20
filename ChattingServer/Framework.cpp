@@ -211,7 +211,7 @@ void Framework::ProcessLogin(Framework::SERIAL_TYPE serial, unsigned char* packe
 
 	packet_login to_packet;
 	::ZeroMemory(&to_packet, sizeof(to_packet));
-	to_packet.Size = sizeof(packet_login);
+	to_packet.Size = sizeof(to_packet);
 	to_packet.Type = PACKET_LOGIN;
 	to_packet.Created = !(isDuplicated);
 	std::memcpy(&to_packet.User, from_packet->User, MAX_USERNAME_LENGTH);
@@ -233,7 +233,7 @@ void Framework::ProcessChannelList(Framework::SERIAL_TYPE serial)
 	packet_channel_list channelList_packet;
 	::ZeroMemory(&channelList_packet, sizeof(channelList_packet));
 	//공개채널은 불변으로 락이 필요치 않으나 커스텀채널은 가변으로 개수 확인시 락이 필요할 것이다.
-	channelList_packet.Size = sizeof(packet_channel_list);
+	channelList_packet.Size = sizeof(channelList_packet);
 	channelList_packet.Type = PACKET_CHANNEL_LIST;
 	channelList_packet.PublicChannelCount = publicChannels.size();
 	std::string publicChannelNames;
@@ -340,15 +340,26 @@ void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned cha
 	packet_channel_enter* from_packet = reinterpret_cast<packet_channel_enter*>(packet);
 	if (from_packet->ChannelName == client.ChannelName) return;
 
-	bool isChannelChanged = false;
+	CHANNEL_CONNECT isChannelChanged = CHANNEL_CONNECT::FAIL_ARGUMENT;
 	auto channel = FindChannelFromName(from_packet->ChannelName);
 	auto prevChannel = FindChannelFromName(client.ChannelName);
 
 	if (channel)
 	{
 		isChannelChanged = ConnectToChannel(serial, from_packet->ChannelName);
-		if (isChannelChanged == false)
+
+		switch (isChannelChanged)
+		{
+		case CHANNEL_CONNECT::FAIL_ARGUMENT:
+		case CHANNEL_CONNECT::FAIL_INVALID_CHANNEL:
+			SendSystemMessage(serial, "***System*** 요청 처리 실패, 다시 입력해주세요.");
+			break;
+		case CHANNEL_CONNECT::FAIL_FULL:
 			SendSystemMessage(serial, "***System*** 채널의 최대 수용인원을 초과하였습니다.");
+			break;
+		default:
+			break;
+		}		
 	}
 	else //새 커스텀채널 생성
 	{
@@ -356,7 +367,8 @@ void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned cha
 		isChannelChanged = ConnectToChannel(serial, from_packet->ChannelName);
 	}
 
-	if (isChannelChanged && (prevChannel != nullptr))
+	if (isChannelChanged == CHANNEL_CONNECT::SUCCESS 
+		&& (prevChannel != nullptr))
 	{
 		HandleUserLeave(serial, false, prevChannel);
 	}
@@ -451,13 +463,13 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 
 		if (channel->GetUserCount() == 0)
 		{	//채널 파기, 본 조건문이 진행되는 경우는 channel이 반드시 CustomChannel 이다.
+			CustomChannel* closedChannel = static_cast<CustomChannel*>(channel.get());
+			closedChannel->CloseChannel();
+	
 			std::unique_lock<std::mutex> ulCustom(customChannelsLock);
 			usedCustomChannelNames.erase(channel->GetChannelName());
 			ulCustom.unlock();
 
-			CustomChannel* closedChannel = reinterpret_cast<CustomChannel*>(channel.get());
-			closedChannel->CloseChannel();
-	
 			return; //후속처리(채널에 남은 유저들에게 정보 전송)가 필요하지 않아 return
 		}
 	}
@@ -490,8 +502,8 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 
 void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 {
-	bool isConnected = false;
-	while (isConnected == false)
+	CHANNEL_CONNECT isConnected = CHANNEL_CONNECT::FAIL_ARGUMENT;
+	while (isConnected != CHANNEL_CONNECT::SUCCESS)
 	{
 		Framework::SERIAL_TYPE randSlot = GetRandomPublicChannelSerial();
 		if (randSlot == -1)
@@ -506,19 +518,18 @@ void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 	}
 }
 
-bool Framework::ConnectToChannel(Framework::SERIAL_TYPE serial, const std::string& channelName)
+Framework::CHANNEL_CONNECT 
+	Framework::ConnectToChannel(Framework::SERIAL_TYPE serial, const std::string& channelName)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return false;
+	if (serial < 0 || MAX_CLIENT_COUNT <= serial) 
+		return CHANNEL_CONNECT::FAIL_ARGUMENT;
 
-	auto& client =GetClient(serial);
-	if (client.IsLogin == false) return false;
+	auto& client = GetClient(serial);
+	if (client.IsLogin == false) return CHANNEL_CONNECT::FAIL_ARGUMENT;
 
 	auto channel = FindChannelFromName(channelName);
 	if (channel == nullptr)
-	{
-		std::cout << "ConnectToChannel() - cannot find channel\n";
-		return false;
-	}
+		return CHANNEL_CONNECT::FAIL_INVALID_CHANNEL;
 
 	std::unique_lock<std::mutex> ulChannel(channel->GetChannelLock());
 
@@ -528,11 +539,11 @@ bool Framework::ConnectToChannel(Framework::SERIAL_TYPE serial, const std::strin
 		client.ChannelName = channelName;
 	}
 	else
-		return false;
+		return CHANNEL_CONNECT::FAIL_FULL;
 
 	packet_newface_enter newface_packet;
 	::ZeroMemory(&newface_packet, sizeof(newface_packet));
-	newface_packet.Size = sizeof(packet_newface_enter);
+	newface_packet.Size = sizeof(newface_packet);
 	newface_packet.Type = PACKET_NEWFACE_ENTER;
 	std::memcpy(&newface_packet.User, client.UserName.c_str(), client.UserName.size());
 
@@ -559,8 +570,7 @@ bool Framework::ConnectToChannel(Framework::SERIAL_TYPE serial, const std::strin
 
 	packet_channel_users users_packet;
 	::ZeroMemory(&users_packet, sizeof(users_packet));
-	users_packet.Size = sizeof(users_packet.Size) + sizeof(users_packet.Type) + sizeof(users_packet.UserCountInPacket)
-		+ sizeof(users_packet.ChannelName) + static_cast<unsigned short>(userNames.size());
+	users_packet.Size = sizeof(users_packet);
 	users_packet.Type = PACKET_CHANNEL_USERS;
 	std::memcpy(&users_packet.ChannelName, client.ChannelName.c_str(), client.ChannelName.size());
 	users_packet.UserCountInPacket = userCount;
@@ -568,7 +578,7 @@ bool Framework::ConnectToChannel(Framework::SERIAL_TYPE serial, const std::strin
 
 	SendPacket(serial, reinterpret_cast<unsigned char *>(&users_packet));
 
-	return true;
+	return CHANNEL_CONNECT::SUCCESS;
 }
 
 Framework::SERIAL_TYPE Framework::FindClientSerialFromName(const std::string& clientName)
@@ -625,7 +635,7 @@ void Framework::AddNewCustomChannel(const std::string& channelName)
 	auto customSerial = GetSerialForNewCustomChannel();
 	if (customSerial == SERIAL_ERROR)
 	{
-		std::cout << "AddNewCustomChannel() error - validCustomSerialQueue is empty\n";
+		std::cout << "AddNewCustomChannel() error - validCustomSerialQueue try_pop timeout\n";
 		return;
 	}
 
@@ -808,7 +818,7 @@ namespace
 					}
 					else
 					{
-						std::memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, required);
+						std::memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, remained);
 						buf_ptr += remained;
 						client.PreviousSize += remained;
 						remained = 0;

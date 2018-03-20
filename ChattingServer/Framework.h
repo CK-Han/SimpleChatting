@@ -27,6 +27,16 @@ public:
 	static const unsigned int	MAX_CUSTOM_COUNT = 10000;
 	static const SERIAL_TYPE	SERIAL_ERROR = -1;
 
+private:
+	enum class CHANNEL_CONNECT {
+		SUCCESS = 0
+		, FAIL_ARGUMENT
+		, FAIL_INVALID_CHANNEL
+		, FAIL_FULL
+	};
+
+
+public:
 	static Framework& GetInstance()
 	{
 		static Framework framework;
@@ -70,7 +80,7 @@ private:
 
 	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel);
 	void					ConnectToRandomPublicChannel(SERIAL_TYPE serial);
-	bool					ConnectToChannel(SERIAL_TYPE serial, const std::string& channelName);
+	CHANNEL_CONNECT			ConnectToChannel(SERIAL_TYPE serial, const std::string& channelName);
 	
 	SERIAL_TYPE						FindClientSerialFromName(const std::string& clientName);
 	std::shared_ptr<Channel>		FindChannelFromName(const std::string& channelName);

@@ -29,8 +29,8 @@ struct Overlap_Info
 {
 	Overlap_Exp				recvOverlapExp;
 
-	int						PacketSize;
-	int						PreviousSize;
+	unsigned int			PacketSize;
+	unsigned int			PreviousSize;
 	unsigned char			PacketBuff[MAX_BUFF_SIZE];
 };
 
