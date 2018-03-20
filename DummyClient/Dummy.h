@@ -3,6 +3,7 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <string>
+#include <mutex>
 #include "../Common/Protocol.h"
 
 class DummyHandler;
@@ -18,14 +19,15 @@ public:
 	bool Connect(const char* serverIP);
 	void Close();
 
-	SOCKET GetSocket() { return clientSocket; };
+	SOCKET			GetSocket() { return clientSocket; }
+	std::mutex&		GetLock() { return dummyLock; }
 
 private:
 	SOCKET					clientSocket;
 	bool					isLogin;
+	std::mutex				dummyLock;
 
-	std::string				userName;
-	std::string				userChannel;
-	std::string				whisperUser;
+	std::string					userName;
+	std::string					userChannel;
 };
 

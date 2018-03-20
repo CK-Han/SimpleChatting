@@ -123,6 +123,7 @@ private:
 	std::mutex										timerLock;
 
 	std::vector<std::pair<Dummy, Overlap_Info>>		dummies;
+	std::vector<std::string>						publicChannels;
 
 	std::priority_queue < Event_Info, std::vector<Event_Info>, Event_Compare> timerQueue;
 };
