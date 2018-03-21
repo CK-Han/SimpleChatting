@@ -129,7 +129,7 @@ void Framework::SendSystemMessage(Framework::SERIAL_TYPE serial, const std::stri
 	::ZeroMemory(&to_packet, sizeof(to_packet));
 	to_packet.Size = sizeof(to_packet);
 	to_packet.Type = PACKET_SYSTEM;
-	std::memcpy(&to_packet.SystemMessage, msg.c_str(), MAX_SYSTEMMSG_LENGTH);
+	std::memcpy(to_packet.SystemMessage, msg.c_str(), min(msg.size(), MAX_SYSTEMMSG_LENGTH));
 
 	SendPacket(serial, reinterpret_cast<unsigned char*>(&to_packet));
 }
@@ -305,9 +305,7 @@ void Framework::ProcessKick(Framework::SERIAL_TYPE serial, unsigned char* packet
 	auto channel = FindChannelFromName(from_packet->Channel);
 	if (channel == nullptr)
 	{
-		SendSystemMessage(serial, "***System*** 요청에 문제가 발생하였습니다.");
-
-		std::cout << "ProcessKick() - cannot find channel\n";
+		SendSystemMessage(serial, "***System*** 요청 처리 실패, 다시 입력해주세요.");
 		return;
 	}
 	

@@ -116,7 +116,7 @@ private:
 	bool				isInitialized;
 	bool				isShutdown;
 	int					lastSerial;
-	int					lastCloseSerial;
+	int					lastToCloseSerial;
 
 	std::vector<std::unique_ptr<std::thread>>		workerThreads;
 	std::unique_ptr<std::thread>					timerThread;

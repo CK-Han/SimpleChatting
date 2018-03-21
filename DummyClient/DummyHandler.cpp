@@ -16,7 +16,7 @@ DummyHandler::DummyHandler()
 	: hIocp(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0))
 	, isInitialized(false)
 	, lastSerial(0)
-	, lastCloseSerial(0)
+	, lastToCloseSerial(0)
 	, dummies(MAX_DUMMY_COUNT)
 	, timerQueue(Event_Compare())
 {
@@ -107,7 +107,7 @@ bool DummyHandler::AddDummy(int beginSerial, int count, const std::string& ip)
 		std::cout << "AddDummy() - invalid serial\n";
 		return false;
 	}
-	else if (lastSerial + count >= MAX_DUMMY_COUNT)
+	else if (lastSerial + count > MAX_DUMMY_COUNT)
 	{
 		std::cout << "AddDummy() - dummies are full\n";
 		return false;
@@ -154,6 +154,7 @@ bool DummyHandler::AddDummy(int beginSerial, int count, const std::string& ip)
 		SendPacket(i, reinterpret_cast<unsigned char*>(&loginPacket));
 
 		++lastSerial;
+		::Sleep(1);
 	}
 
 	std::cout << count << "dummies login!\n";
@@ -162,21 +163,23 @@ bool DummyHandler::AddDummy(int beginSerial, int count, const std::string& ip)
 
 bool DummyHandler::CloseDummy(int count)
 {
+	int closedDummyCount = 0;
 	for (int i = 0; i < count; ++i)
 	{
-		if (lastCloseSerial + i >= lastSerial)
+		if (lastToCloseSerial + i >= lastSerial)
 			return false;
 		
-		Dummy& dummy = dummies[lastCloseSerial + i].first;
+		Dummy& dummy = dummies[lastToCloseSerial + i].first;
 		if (dummy.isLogin)
 		{
 			dummy.Close();
-			lastCloseSerial++;
+			lastToCloseSerial++;
+			closedDummyCount++;
 			::Sleep(1);
 		}
 	}
 
-	std::cout << count << "dummies closed\n";
+	std::cout << closedDummyCount << "dummies closed\n";
 	return true;
 }
 
@@ -319,7 +322,7 @@ void DummyHandler::RequestWhisper(int serial)
 	
 	std::string randomListener = GetRandomUser();
 	if (randomListener.empty() 
-		|| (randomListener == dummy.userName)) 
+		|| (randomListener == dummy.userName))
 		return;
 
 	std::string chat("This is whisper! ID : " + std::to_string(serial));
@@ -416,7 +419,7 @@ void DummyHandler::RequestChatting(int serial)
 //Private 
 std::string DummyHandler::GetRandomUser() const
 {
-	std::uniform_int_distribution<int> uid(lastCloseSerial, lastSerial - 1);
+	std::uniform_int_distribution<int> uid(lastToCloseSerial, lastSerial - 1);
 	
 	const int slot = uid(RANDOM_ENGINE);
 	const Dummy& dummy = dummies[slot].first;
@@ -428,7 +431,7 @@ std::string DummyHandler::GetRandomUser() const
 
 std::string DummyHandler::GetRandomChannel() const
 {
-	std::uniform_int_distribution<int> uid(lastCloseSerial, lastSerial - 1);
+	std::uniform_int_distribution<int> uid(lastToCloseSerial, lastSerial - 1);
 	
 	static const char* chars = "0123456789"
 		"abcdefghijklmnopqrstuvwxyz"
@@ -510,8 +513,11 @@ namespace
 				while (0 < remained)
 				{
 					if (0 == overlapInfo.PacketSize)
+					{
 						overlapInfo.PacketSize = GetPacketSize(buf_ptr);
-				
+						if (overlapInfo.PacketSize > 5000)
+							std::cout << "error!\n";
+					}
 					unsigned int required = overlapInfo.PacketSize - overlapInfo.PreviousSize;
 
 					if (remained >= required)
