@@ -16,7 +16,7 @@ Dummy::~Dummy()
 
 bool Dummy::Connect(const char* serverIP)
 {
-	clientSocket = ::WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
+	clientSocket = ::WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
 
 	SOCKADDR_IN ServerAddr;
 	::ZeroMemory(&ServerAddr, sizeof(SOCKADDR_IN));

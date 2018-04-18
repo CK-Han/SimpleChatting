@@ -99,6 +99,7 @@ void Framework::SendPacket(Framework::SERIAL_TYPE serial, unsigned char* packet)
 	catch(...)
 	{
 		std::cout << "SendPacket() - new error!\n";
+		return;
 	}
 
 	::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
@@ -377,7 +378,7 @@ void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned cha
 //Private Functions
 
 
-//return [-1, MAX_PUBLIC_CHANNEL_COUNT), '-1' means public channels are full
+//return integer [-1, MAX_PUBLIC_CHANNEL_COUNT), '-1' means public channels are busy
 Framework::SERIAL_TYPE Framework::GetRandomPublicChannelSerial() const
 {
 	const unsigned int publicChannelCount = publicChannels.size();
@@ -398,7 +399,7 @@ Framework::SERIAL_TYPE Framework::GetRandomPublicChannelSerial() const
 			channelIsFull[randSlot] = true;
 			++fullChannelCount;
 
-			if (fullChannelCount == publicChannelCount)
+			if(fullChannelCount >= PUBLIC_BUSY_COUNT)	//어느정도 채널 내 유저가 차있다면 혼잡한 상태로 한다.
 				return -1;
 		}
 	}
@@ -507,8 +508,7 @@ void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 		if (randSlot == -1)
 		{	//모든 공개채널이 가득 찬 상태로, 채널에 입장하지 못한 상태
 			//스타크래프트1 배틀넷의 Void 채널과 유사
-			SendSystemMessage(serial, "***System*** 모든 공개채널에 인원이 가득 찼습니다.");
-			std::cout << "all public channels are full\n";
+			SendSystemMessage(serial, "***System*** 모든 공개채널이 혼잡하여 연결하지 못했습니다.");
 			return;
 		}
 		else
@@ -688,7 +688,7 @@ namespace
 		Framework& framework = Framework::GetInstance();
 		SOCKADDR_IN listenAddr;
 
-		SOCKET acceptSocket = ::WSASocket(AF_INET, SOCK_STREAM,
+		SOCKET acceptSocket = ::WSASocketW(AF_INET, SOCK_STREAM,
 			IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
 
 		std::memset(&listenAddr, 0, sizeof(listenAddr));
@@ -796,31 +796,43 @@ namespace
 			if (OPERATION_RECV == overlapExp->Operation)
 			{
 				Client& client = framework.GetClient(serial);
-				
-				unsigned char* buf_ptr = client.RecvOverlap.Iocp_Buffer;
-				int remained = iosize;
-				while (0 < remained)
-				{
-					if (0 == client.PacketSize)
-						client.PacketSize = GetPacketSize(buf_ptr);
-					int required = client.PacketSize - client.PreviousSize;
+				unsigned char* ioBufCursor = overlapExp->Iocp_Buffer;
+				int remained = 0;
 
-					if (remained >= required)
-					{	//패킷 조립 완료
-						std::memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, required);
+				if ((client.PreviousCursor + iosize) > MAX_BUFF_SIZE)
+				{
+					int empty = MAX_BUFF_SIZE - client.PreviousCursor;
+					std::memcpy(client.PacketBuff + client.PreviousCursor, ioBufCursor, empty);
+
+					remained = iosize - empty;
+					ioBufCursor += empty;
+					client.PreviousCursor += empty;
+				}
+				else
+				{
+					std::memcpy(client.PacketBuff + client.PreviousCursor, ioBufCursor, iosize);
+					client.PreviousCursor += iosize;
+				}
+
+				do
+				{
+					client.PacketSize = GetPacketSize(client.PacketBuff);
+
+					if (client.PacketSize <= client.PreviousCursor)
+					{	//조립가능
 						framework.ProcessPacket(serial, client.PacketBuff);
-						buf_ptr += required;
-						remained -= required;
+						std::memmove(client.PacketBuff, client.PacketBuff + client.PacketSize
+							, client.PreviousCursor - client.PacketSize);
+
+						client.PreviousCursor -= client.PacketSize;
 						client.PacketSize = 0;
-						client.PreviousSize = 0;
 					}
-					else
-					{
-						std::memcpy(client.PacketBuff + client.PreviousSize, buf_ptr, remained);
-						buf_ptr += remained;
-						client.PreviousSize += remained;
-						remained = 0;
-					}
+				} while (client.PacketSize == 0);
+
+				if (remained > 0)
+				{
+					std::memcpy(client.PacketBuff + client.PreviousCursor, ioBufCursor, remained);
+					client.PreviousCursor += remained;
 				}
 
 				DWORD flags = 0;

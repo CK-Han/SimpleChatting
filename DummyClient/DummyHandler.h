@@ -30,7 +30,7 @@ struct Overlap_Info
 	Overlap_Exp				recvOverlapExp;
 
 	unsigned int			PacketSize;
-	unsigned int			PreviousSize;
+	unsigned int			PreviousCursor;
 	unsigned char			PacketBuff[MAX_BUFF_SIZE];
 };
 

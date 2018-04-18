@@ -25,7 +25,9 @@ public:
 	static const unsigned int	NUM_WORKER_THREADS = 8;
 	static const unsigned int	MAX_CLIENT_COUNT = 10000;
 	static const unsigned int	MAX_CUSTOM_COUNT = 10000;
+	static const unsigned int	PUBLIC_BUSY_COUNT = 2;
 	static const SERIAL_TYPE	SERIAL_ERROR = -1;
+	
 
 private:
 	enum class CHANNEL_CONNECT {

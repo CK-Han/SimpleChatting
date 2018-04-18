@@ -23,7 +23,7 @@ struct Client
 	bool				IsLogin;
 	Overlap_Exp			RecvOverlap;
 	int					PacketSize;
-	int					PreviousSize;
+	int					PreviousCursor;
 	unsigned char		PacketBuff[MAX_BUFF_SIZE];
 
 	std::string			UserName;
@@ -34,7 +34,7 @@ struct Client
 		, ClientSocket(INVALID_SOCKET)
 		, IsLogin(false)
 		, PacketSize(0)
-		, PreviousSize(0)
+		, PreviousCursor(0)
 	{
 		::ZeroMemory(&RecvOverlap, sizeof(RecvOverlap));
 		::ZeroMemory(PacketBuff, sizeof(PacketBuff));

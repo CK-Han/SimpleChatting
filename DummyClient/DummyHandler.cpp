@@ -508,36 +508,45 @@ namespace
 
 			if (OPERATION_RECV == overlapExp->Operation)
 			{
-				unsigned char* buf_ptr = overlapInfo.recvOverlapExp.Iocp_Buffer;
-				unsigned int remained = iosize;
-				while (0 < remained)
-				{
-					if (0 == overlapInfo.PacketSize)
-					{
-						overlapInfo.PacketSize = GetPacketSize(buf_ptr);
-						if (overlapInfo.PacketSize > 5000)
-							std::cout << "error!\n";
-					}
-					unsigned int required = overlapInfo.PacketSize - overlapInfo.PreviousSize;
+				unsigned char* ptrBuf = overlapExp->Iocp_Buffer;
+				int remained = 0;
 
-					if (remained >= required)
-					{	//패킷 조립 완료
-						memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousSize, buf_ptr, required);
-						handler->ProcessPacket(serial, overlapInfo.PacketBuff);
-						buf_ptr += required;
-						remained -= required;
-						overlapInfo.PacketSize = 0;
-						overlapInfo.PreviousSize = 0;
-					}
-					else
-					{
-						memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousSize, buf_ptr, remained);
-						buf_ptr += remained;
-						overlapInfo.PreviousSize += remained;
-						remained = 0;
-					}
+				if ((overlapInfo.PreviousCursor + iosize) > MAX_BUFF_SIZE)
+				{
+					int empty = MAX_BUFF_SIZE - overlapInfo.PreviousCursor;
+					std::memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousCursor, ptrBuf, empty);
+
+					remained = iosize - empty;
+					ptrBuf += empty;
+					overlapInfo.PreviousCursor += empty;
+				}
+				else
+				{
+					std::memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousCursor, ptrBuf, iosize);
+					overlapInfo.PreviousCursor += iosize;
 				}
 
+				do
+				{
+					overlapInfo.PacketSize = GetPacketSize(overlapInfo.PacketBuff);
+
+					if (overlapInfo.PacketSize <= overlapInfo.PreviousCursor)
+					{	//조립가능
+						handler->ProcessPacket(serial, overlapInfo.PacketBuff);
+						std::memmove(overlapInfo.PacketBuff, overlapInfo.PacketBuff + overlapInfo.PacketSize
+							, overlapInfo.PreviousCursor - overlapInfo.PacketSize);
+
+						overlapInfo.PreviousCursor -= overlapInfo.PacketSize;
+						overlapInfo.PacketSize = 0;
+					}
+				} while (overlapInfo.PacketSize == 0);
+
+				if (remained > 0)
+				{
+					std::memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousCursor, ptrBuf, remained);
+					overlapInfo.PreviousCursor += remained;
+				}
+			
 				DWORD flags = 0;
 				int recvRet = ::WSARecv(dummy.GetSocket(),
 					&overlapInfo.recvOverlapExp.WsaBuf, 1, NULL, &flags,
