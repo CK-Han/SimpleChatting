@@ -586,15 +586,15 @@ void Framework::RequestKick(const std::string& target)
 	if (currentChannelMaster != userName)
 	{
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM("***System*** 당신은 방장이 아닙니다!"));
+		SeekLastAddedCursor(listLog);
 		return;
 	}
 	if (target == userName)
 	{
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM("***System*** 본인을 강퇴할 수 없습니다!"));
+		SeekLastAddedCursor(listLog);
 		return;
 	}
-	SeekLastAddedCursor(listLog);
-	
 
 	packet_kick_user* my_packet = reinterpret_cast<packet_kick_user *>(userSocket.GetSendWsaBuf().buf);
 	::ZeroMemory(my_packet, sizeof(packet_kick_user));
