@@ -2,9 +2,22 @@
 #include "Framework.h"
 #pragma comment (lib, "ws2_32.lib")
 
+
 Socket::Socket()
-	: isInitialized(false)
+	: hWnd(NULL)
+	, clientSocket(INVALID_SOCKET)
+	, isInitialized(false)
+	, inPacketSize(0)
+	, savedPacketSize(0)
 {
+	::ZeroMemory(sendBuf, sizeof(sendBuf));
+	::ZeroMemory(recvBuf, sizeof(recvBuf));
+	::ZeroMemory(packetBuf, sizeof(packetBuf));
+
+	sendWsaBuf.buf = reinterpret_cast<CHAR*>(sendBuf);
+	sendWsaBuf.len = sizeof(sendBuf);
+	recvWsaBuf.buf = reinterpret_cast<CHAR*>(recvBuf);
+	recvWsaBuf.len = sizeof(recvBuf);
 }
 
 Socket::~Socket()
@@ -14,7 +27,7 @@ Socket::~Socket()
 
 bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 {
-	if (serverIP == nullptr 
+	if (serverIP == nullptr || mainWindow == NULL
 		|| isInitialized == true)
 	{
 		//error!
@@ -23,37 +36,31 @@ bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 
 	hWnd = mainWindow;
 	clientSocket = ::WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
-	
-	SOCKADDR_IN ServerAddr;
-	::ZeroMemory(&ServerAddr, sizeof(SOCKADDR_IN));
-	ServerAddr.sin_family = AF_INET;
-	ServerAddr.sin_port = htons(MY_SERVER_PORT);
-	ServerAddr.sin_addr.s_addr = inet_addr(serverIP);
+	if (clientSocket == INVALID_SOCKET)
+		return false;
 
-	int Result = WSAConnect(clientSocket, (sockaddr *)&ServerAddr, sizeof(ServerAddr), nullptr, nullptr, nullptr, nullptr);
-	if (0 != Result)
+	SOCKADDR_IN serverAddr;
+	::ZeroMemory(&serverAddr, sizeof(SOCKADDR_IN));
+	serverAddr.sin_family = AF_INET;
+	serverAddr.sin_port = htons(MY_SERVER_PORT);
+	serverAddr.sin_addr.s_addr = inet_addr(serverIP);
+
+	int Result = WSAConnect(clientSocket, (sockaddr *)&serverAddr, sizeof(serverAddr), nullptr, nullptr, nullptr, nullptr);
+	if (SOCKET_ERROR == Result)
 	{
 		::MessageBox(mainWindow, "WSAConnect Error!!", "Error!!", MB_OK);
-		if (clientSocket) 
-			closesocket(clientSocket);
-
 		return false;
 	}
 
 	WSAAsyncSelect(clientSocket, mainWindow, WM_SOCKET, FD_CLOSE | FD_READ);
 
-	sendWsaBuf.buf = reinterpret_cast<CHAR*>(sendBuf);
-	sendWsaBuf.len = MAX_BUFF_SIZE;
-	recvWsaBuf.buf = reinterpret_cast<CHAR*>(recvBuf);
-	recvWsaBuf.len = MAX_BUFF_SIZE;
-
 	isInitialized = true;
-	return true;	
+	return isInitialized;
 }
 
 void Socket::ReadPacket(SOCKET sock)
 {
-	DWORD iobyte, ioflag = 0;
+	DWORD iobyte = 0, ioflag = 0;
 	int ret = WSARecv(sock, &recvWsaBuf, 1, &iobyte, &ioflag, nullptr, nullptr);
 	if (0 != ret)
 	{
@@ -61,38 +68,54 @@ void Socket::ReadPacket(SOCKET sock)
 		return;
 	}
 
-	unsigned char* ptr = reinterpret_cast<unsigned char*>(recvBuf);
+	DWORD remainedIoByte = iobyte;
+	unsigned char* ptr = reinterpret_cast<unsigned char*>(recvWsaBuf.buf);
 
-	while (0 != iobyte) 
+	if (savedPacketSize + remainedIoByte > sizeof(packetBuf))
 	{
-		if (0 == inPacketSize) inPacketSize = GetPacketSize(ptr);
-		if ((iobyte + savedPacketSize) >= inPacketSize) 
-		{	
-			memcpy(packetBuf + savedPacketSize, ptr, inPacketSize - savedPacketSize);
-			ProcessPacket(packetBuf);
+		int empty = sizeof(packetBuf) - savedPacketSize;
+		std::memcpy(packetBuf + savedPacketSize, ptr, empty);
 
-			ptr += inPacketSize - savedPacketSize;
-			iobyte -= inPacketSize - savedPacketSize;
+		remainedIoByte -= empty;
+		ptr += empty;
+		savedPacketSize += empty;
+	}
+	else
+	{
+		std::memcpy(packetBuf + savedPacketSize, ptr, remainedIoByte);
+		savedPacketSize = iobyte;
+		remainedIoByte = 0;
+	}
+
+	do
+	{
+		inPacketSize = GetPacketSize(packetBuf);
+
+		if (inPacketSize <= savedPacketSize)
+		{	//조립가능
+			ProcessPacket(packetBuf);
+			std::memmove(packetBuf, packetBuf + inPacketSize
+				, savedPacketSize - inPacketSize);
+
+			savedPacketSize -= inPacketSize;
 			inPacketSize = 0;
-			savedPacketSize = 0;
 		}
-		else 
-		{
-			memcpy(packetBuf + savedPacketSize, ptr, iobyte);
-			savedPacketSize += iobyte;
-			iobyte = 0;
-		}
+	} while (inPacketSize == 0);
+
+	if (remainedIoByte > 0)
+	{
+		std::memcpy(packetBuf + savedPacketSize, ptr, remainedIoByte);
+		savedPacketSize += remainedIoByte;
 	}
 }
 
 
 void Socket::SendPacket(unsigned char* packet)
 {
-	DWORD iobyte;
-
+	DWORD ioBytes = 0;
 	sendWsaBuf.len = GetPacketSize(packet);
-	int ret = WSASend(clientSocket, &sendWsaBuf, 1, &iobyte, 0, NULL, NULL);
-	if (0 != ret)
+	int ret = WSASend(clientSocket, &sendWsaBuf, 1, &ioBytes, 0, NULL, NULL);
+	if (SOCKET_ERROR == ret)
 	{
 		::MessageBox(hWnd, "WSASend Error!", "Error!!", MB_OK);
 	}

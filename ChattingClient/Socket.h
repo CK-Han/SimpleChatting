@@ -21,7 +21,7 @@ public:
 
 
 private:
-	HWND			hWnd;
+	HWND					hWnd;
 
 	SOCKET					clientSocket;
 	bool					isInitialized;
@@ -31,7 +31,7 @@ private:
 	unsigned char			recvBuf[MAX_BUFF_SIZE];
 	unsigned char			packetBuf[MAX_BUFF_SIZE];
 
-	int				inPacketSize{ 0 };
-	int				savedPacketSize{ 0 };
+	int						inPacketSize;
+	int						savedPacketSize;
 };
 

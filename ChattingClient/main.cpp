@@ -66,7 +66,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			bool isConnect = Framework::GetInstance()->GetUserSocket().Initialize(hWnd, ipAddress);
 			if(isConnect)
 			{
-				Framework::GetInstance()->Initialize(hWnd, gInstance);	
+				bool isStarted = Framework::GetInstance()->Initialize(hWnd, gInstance);
+				if (isStarted == false)
+					PostQuitMessage(0);
+
 				::DestroyWindow(editIP);
 				::DestroyWindow(buttonIP);
 			}

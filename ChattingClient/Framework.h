@@ -32,7 +32,7 @@ public:
 		return &framework;
 	}
 
-	void Initialize(HWND hWnd, HINSTANCE instance);
+	bool Initialize(HWND hWnd, HINSTANCE instance);
 	
 	void ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam);
 	void ProcessInput();

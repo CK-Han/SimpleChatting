@@ -43,14 +43,19 @@ std::vector<std::string>
 	return tokens;
 };
 
-
 Framework::Framework()
 	: clientWidth(0)
 	, clientHeight(0)
-	, mainWindow(nullptr)
-	, mainInstance(nullptr)
 	, isInitialized(false)
 	, isLogin(false)
+	, mainWindow(NULL)
+	, mainInstance(NULL)
+	, editInput(NULL)
+	, listLog(NULL)
+	, editChannelName(NULL)
+	, listUsers(NULL)
+	, textCommands(NULL)
+	, oldInputProc(nullptr)
 {
 	WSADATA	wsadata;
 	WSAStartup(MAKEWORD(2, 2), &wsadata);
@@ -62,12 +67,15 @@ Framework::~Framework()
 }
 
 
-void Framework::Initialize(HWND hWnd, HINSTANCE instance)
+bool Framework::Initialize(HWND hWnd, HINSTANCE instance)
 {
+	if (hWnd == NULL || instance == NULL)
+		return false;
+
 	if (isInitialized == true)
 	{
 		::MessageBox(hWnd, "이미 초기화되었습니다.", "Error", MB_OK);
-		return;
+		return false;
 	}
 
 	mainWindow = hWnd;
@@ -113,6 +121,7 @@ void Framework::Initialize(HWND hWnd, HINSTANCE instance)
 		, hWnd, 0, mainInstance, NULL);
 
 	isInitialized = true;
+	return isInitialized;
 }
 
 void Framework::ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
@@ -507,7 +516,7 @@ void Framework::RequestLogin(const std::string& id)
 
 	if (false == IsValidUserName(id))
 	{
-		::MessageBox(mainWindow, "사용 불가능한 아이디입니다.", "생성 불가", MB_OK);
+		::MessageBox(mainWindow, "사용 불가능한 아이디입니다. 한글, 알파벳, 숫자만 사용 가능합니다.", "생성 불가", MB_OK);
 		return;
 	}
 
