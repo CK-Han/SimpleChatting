@@ -12,8 +12,8 @@ public:
 	Channel(const std::string& name);
 	virtual ~Channel();
 	
-	virtual void	Enter(const Client* client);
-	virtual void	Exit(const Client* client);
+	virtual void	Enter(const Client* client) = 0;
+	virtual void	Exit(const Client* client) = 0;
 	
 
 	unsigned int						GetUserCount() const { return clientsInChannel.size(); }
@@ -24,8 +24,8 @@ public:
 	std::list<const Client*>&			GetClientsInChannel() { return clientsInChannel; }
 
 protected:	
-	void							SetChannelMaster(const std::string& master) { channelMaster = master; }
-	void							SetChannelName(const std::string& name) { channelName = name; }
+	void								SetChannelMaster(const std::string& master) { channelMaster = master; }
+	void								SetChannelName(const std::string& name) { channelName = name; }
 
 private:
 	std::string						channelName;
@@ -41,6 +41,9 @@ class PublicChannel
 public:
 	PublicChannel(const std::string& name);
 	virtual ~PublicChannel();
+
+	virtual void	Enter(const Client* client);
+	virtual void	Exit(const Client* client);
 };
 
 
@@ -60,6 +63,5 @@ public:
 	void			CloseChannel();
 
 private:
-	bool		isCreated;
-
+	bool			isCreated;
 };

@@ -78,7 +78,7 @@ private:
 
 	SERIAL_TYPE				GetRandomPublicChannelSerial() const;
 	SERIAL_TYPE				GetSerialForNewCustomChannel();
-	void					BroadcastToChannel(const std::string& channelName, unsigned char* packet);
+	void					BroadcastToChannel(std::shared_ptr<Channel>& channel, unsigned char* packet);
 
 	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel);
 	void					ConnectToRandomPublicChannel(SERIAL_TYPE serial);

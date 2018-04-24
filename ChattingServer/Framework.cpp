@@ -267,11 +267,13 @@ void Framework::ProcessChatting(Framework::SERIAL_TYPE serial, unsigned char* pa
 	auto& client =GetClient(serial);
 	if (client.IsLogin == false) return;
 
+	auto channel = FindChannelFromName(client.ChannelName);
+	if (channel == nullptr) return;
+
 	packet_chatting* from_packet = reinterpret_cast<packet_chatting*>(packet);
-	
 	if (from_packet->IsWhisper == false)
 	{
-		BroadcastToChannel(client.ChannelName, packet);
+		BroadcastToChannel(channel, packet);
 	}
 	else
 	{
@@ -421,18 +423,11 @@ Framework::SERIAL_TYPE Framework::GetSerialForNewCustomChannel()
 	return customSerial;
 }
 
-void Framework::BroadcastToChannel(const std::string& channelName, unsigned char* packet)
+void Framework::BroadcastToChannel(std::shared_ptr<Channel>& channel, unsigned char* packet)
 {
 	if (packet == nullptr) return;
-	auto channel = FindChannelFromName(channelName);
-
-	if (channel)
-	{
-		std::unique_lock<std::mutex> ulChannel(channel->GetChannelLock());
-
-		for (auto* client : channel->GetClientsInChannel())
+	for (auto* client : channel->GetClientsInChannel())
 			SendPacket(client->Serial, packet);
-	}
 }
 
 void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel)
@@ -472,8 +467,7 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 			return; //후속처리(채널에 남은 유저들에게 정보 전송)가 필요하지 않아 return
 		}
 	}
-	ulChannel.unlock();
-
+	
 	packet_user_leave leave_packet;
 	::ZeroMemory(&leave_packet, sizeof(leave_packet));
 	leave_packet.Size = sizeof(leave_packet);
@@ -484,7 +478,7 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 	if (isKicked)
 		SendSystemMessage(leaver, "***System*** 방장에 의해 강퇴당하였습니다. 공개채널로 이동합니다.");
 
-	BroadcastToChannel(channelName, reinterpret_cast<unsigned char*>(&leave_packet));
+	BroadcastToChannel(channel, reinterpret_cast<unsigned char*>(&leave_packet));
 
 	if (isMasterChanged)
 	{
@@ -495,7 +489,7 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 		std::memcpy(&new_master_packet.Channel, channelName.c_str(), channelName.size());
 		std::memcpy(&new_master_packet.Master, channel->GetChannelMaster().c_str(), channel->GetChannelMaster().size());
 
-		BroadcastToChannel(channelName, reinterpret_cast<unsigned char*>(&new_master_packet));
+		BroadcastToChannel(channel, reinterpret_cast<unsigned char*>(&new_master_packet));
 	}
 }
 
@@ -545,7 +539,7 @@ Framework::CHANNEL_CONNECT
 	newface_packet.Type = PACKET_NEWFACE_ENTER;
 	std::memcpy(&newface_packet.User, client.UserName.c_str(), client.UserName.size());
 
-	//1. 연결하고자 하는 채널의 유저들에게 새 유저를 알리면서 이름을 종합한다.
+	//1. 연결하고자 하는 채널의 유저들에게 새 유저를 알리면서 + 그 이름들을 종합한다.
 	std::string userNames;
 	unsigned int userCount = 0;
 	for (auto* clientInChannel : channel->GetClientsInChannel())
@@ -554,9 +548,8 @@ Framework::CHANNEL_CONNECT
 		userNames += clientInChannel->UserName + NAME_DELIMITER;
 		++userCount;
 	}
-	ulChannel.unlock();
 
-	//2. 새 유저는 이동하고자 하는 채널 정보 및 채널에 존재하고있던 유저 정보를 얻는다.
+	//2. 새 유저는 이동하고자 하는 채널 정보를 얻는다.
 	packet_channel_enter enter_packet;
 	::ZeroMemory(&enter_packet, sizeof(enter_packet));
 	enter_packet.Size = sizeof(enter_packet);
@@ -566,6 +559,7 @@ Framework::CHANNEL_CONNECT
 
 	SendPacket(serial, reinterpret_cast<unsigned char *>(&enter_packet));
 
+	//3. 마지막으로 채널에 존재하는 유저들의 리스트를 얻는다.
 	packet_channel_users users_packet;
 	::ZeroMemory(&users_packet, sizeof(users_packet));
 	users_packet.Size = sizeof(users_packet);

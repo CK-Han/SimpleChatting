@@ -53,6 +53,17 @@ PublicChannel::~PublicChannel()
 {
 }
 
+void PublicChannel::Enter(const Client* client)
+{
+	Channel::Enter(client);
+}
+
+
+void PublicChannel::Exit(const Client* client)
+{
+	Channel::Exit(client);
+}
+
 ///////////////////////////////////////////////////////////////////
 
 CustomChannel::CustomChannel(const std::string& name)
