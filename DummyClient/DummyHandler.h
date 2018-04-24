@@ -41,7 +41,6 @@ struct Event_Info
 	unsigned int Wakeup_Time;
 };
 
-
 class Event_Compare
 {
 public:
@@ -51,16 +50,17 @@ public:
 	}
 };
 
+
 class DummyHandler
 {
-public:
+private:
 	static constexpr unsigned int NUM_WORKER_THREADS	 = 8;
 	static constexpr unsigned int START_DUMMY_COUNT		 = 1000;
 	static constexpr unsigned int MAX_DUMMY_COUNT		 = 10000;
 	static constexpr unsigned int PACKET_DELAY_TIME		 = 2000;
 
-private:
 	static std::default_random_engine RANDOM_ENGINE;
+	using Timer_Queue = std::priority_queue < Event_Info, std::vector<Event_Info>, Event_Compare>;
 
 public:
 	static DummyHandler* GetInstance()
@@ -72,25 +72,23 @@ public:
 	bool Start(const std::string& ip);
 	void Close();
 
-	bool AddDummy(int beginSerial, int count, const std::string& ip);
-	bool CloseDummy(int count);
+	bool AddDummy(unsigned int count, const std::string& ip);
+	bool CloseDummy(unsigned int count);
 
-	void SendPacket(int serial, unsigned char* packet);
+	void SendPacket(int serial, unsigned char* packet) const;
 	void ProcessPacket(int serial, unsigned char* packet);
 
-	void RequestRandomPacket(int serial);
+	void SendRandomPacket(int serial);
 
 
 	HANDLE						GetIocpHandle() const { return hIocp; }
 	std::mutex&					GetTimerLock() { return timerLock; }
 	int							GetValidSerial() const { return lastSerial; }
 	bool						IsShutdown() const { return isShutdown; }
+	bool						IsValidSerial(int serial) const;
 	
-
-	std::vector<std::pair<Dummy, Overlap_Info>>& 
-		GetDummies() { return dummies; }
-	std::priority_queue < Event_Info, std::vector<Event_Info>, Event_Compare>&
-		GetTimerQueue() { return timerQueue; }
+	std::vector<std::pair<Dummy, Overlap_Info>>&	GetDummies() { return dummies; }
+	Timer_Queue&									GetTimerQueue() { return timerQueue; }
 
 
 private:
@@ -125,6 +123,6 @@ private:
 	std::vector<std::pair<Dummy, Overlap_Info>>		dummies;
 	std::vector<std::string>						publicChannels;
 
-	std::priority_queue < Event_Info, std::vector<Event_Info>, Event_Compare> timerQueue;
+	Timer_Queue										timerQueue;
 };
 

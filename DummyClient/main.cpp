@@ -22,11 +22,10 @@ void main()
 	{
 		ch = getchar();
 		if (ch == '+')
-			DummyHandler::GetInstance()->AddDummy(DummyHandler::GetInstance()->GetValidSerial(), 100, ip);
+			DummyHandler::GetInstance()->AddDummy(100, ip);
 		else if(ch == '-')
 			DummyHandler::GetInstance()->DummyHandler::GetInstance()->CloseDummy(50);
 	}
-	 //DummyHandler::GetInstance()->Close();
-
+	
 	cout << "프로그램 종료\n";
 }

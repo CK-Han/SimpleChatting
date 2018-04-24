@@ -19,7 +19,7 @@ public:
 	bool Connect(const char* serverIP);
 	void Close();
 
-	SOCKET			GetSocket() { return clientSocket; }
+	SOCKET			GetSocket() const { return clientSocket; }
 	std::mutex&		GetLock() { return dummyLock; }
 
 private:
@@ -27,7 +27,7 @@ private:
 	bool					isLogin;
 	std::mutex				dummyLock;
 
-	std::string					userName;
-	std::string					userChannel;
+	std::string				userName;
+	std::string				userChannel;
 };
 
