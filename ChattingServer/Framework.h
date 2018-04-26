@@ -25,7 +25,7 @@ public:
 	static const unsigned int	NUM_WORKER_THREADS = 8;
 	static const unsigned int	MAX_CLIENT_COUNT = 10000;
 	static const unsigned int	MAX_CUSTOM_COUNT = 10000;
-	static const unsigned int	PUBLIC_BUSY_COUNT = 2;
+	static const unsigned int	PUBLIC_BUSY_COUNT = 3;
 	static const SERIAL_TYPE	SERIAL_ERROR = -1;
 	
 
@@ -45,7 +45,8 @@ public:
 		return framework;
 	}
 
-	bool						IsShutDown() const { return isShutdown; }
+	bool						IsShutDown() const { return isShutDown; }
+	bool						IsValidClientSerial(SERIAL_TYPE serial) const { return (0 <= serial && serial < MAX_CLIENT_COUNT) ? true : false; }
 
 	HANDLE						GetIocpHandle() const { return hIocp; }
 	Client&						GetClient(SERIAL_TYPE serial) { return *clients[serial]; }
@@ -63,12 +64,6 @@ public:
 	void		ProcessChannelChange(SERIAL_TYPE serial, unsigned char* packet);
 
 
-//Debug
-	int									DebugUserCount();
-	std::vector<std::string>			DebugCustomChannels();
-//Debug
-
-
 private:
 	Framework();
 	~Framework();
@@ -78,7 +73,7 @@ private:
 
 	SERIAL_TYPE				GetRandomPublicChannelSerial() const;
 	SERIAL_TYPE				GetSerialForNewCustomChannel();
-	void					BroadcastToChannel(std::shared_ptr<Channel>& channel, unsigned char* packet);
+	void					BroadcastToChannel(std::shared_ptr<Channel>& channel, unsigned char* packet) const;
 
 	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel);
 	void					ConnectToRandomPublicChannel(SERIAL_TYPE serial);
@@ -87,11 +82,11 @@ private:
 	SERIAL_TYPE						FindClientSerialFromName(const std::string& clientName);
 	std::shared_ptr<Channel>		FindChannelFromName(const std::string& channelName);
 
-	void					AddNewCustomChannel(const std::string& channelName);
-
+	void							AddNewCustomChannel(const std::string& channelName);
+	
 private:
 	HANDLE					hIocp;
-	bool					isShutdown;
+	bool					isShutDown;
 
 	std::vector<std::unique_ptr<std::thread>>		workerThreads;
 	std::unique_ptr<std::thread>					acceptThread;

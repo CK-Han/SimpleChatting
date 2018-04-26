@@ -1,6 +1,7 @@
 #include "Framework.h"
 #include <iostream>
 #include <algorithm>
+#include <numeric>
 #include <random>
 #pragma comment (lib, "ws2_32.lib")
 
@@ -13,7 +14,7 @@ namespace
 
 Framework::Framework()
 	: hIocp(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0))
-	, isShutdown(false)
+	, isShutDown(false)
 {
 	WSADATA	wsadata;
 	::WSAStartup(MAKEWORD(2, 2), &wsadata);
@@ -27,12 +28,17 @@ Framework::~Framework()
 	ShutDown();
 }
 
-
 void Framework::Initialize()
 {
 	clients.reserve(MAX_CLIENT_COUNT);
 	for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
 		clients.emplace_back(std::make_unique<Client>());
+
+	for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
+		validClientSerials.push(i);
+
+	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
+		validCustomChannelSerials.push(i);
 
 	//protocol의 MAX_PUBLIC_CHANNEL_COUNT 고려
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("FreeChannel"));
@@ -43,7 +49,7 @@ void Framework::Initialize()
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutStudy"));
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutHobby"));
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutExcercise"));
-								
+
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample1"));
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample2"));
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample3"));
@@ -52,26 +58,27 @@ void Framework::Initialize()
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample6"));
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample7"));
 	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample8"));
-	
+
 	customChannels.reserve(MAX_CUSTOM_COUNT);
 	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
 		customChannels.emplace_back(std::make_shared<CustomChannel>(""));
 
-	for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
-		validClientSerials.push(i);
+	try
+	{
+		for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
+			workerThreads.emplace_back(new std::thread(WorkerThreadStart));
 
-	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
-		validCustomChannelSerials.push(i);
-
-	for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
-		workerThreads.emplace_back(new std::thread(WorkerThreadStart));
-
-	acceptThread = std::unique_ptr<std::thread>(new std::thread(AcceptThreadStart));
+		acceptThread = std::unique_ptr<std::thread>(new std::thread(AcceptThreadStart));
+	}
+	catch (const std::bad_alloc&)
+	{
+		std::cout << "Initialize() - new thread bad_alloc\n";
+	}
 }
 
 void Framework::ShutDown()
 {
-	isShutdown = true;
+	isShutDown = true;
 
 	for (auto& th : workerThreads)
 		th->join();
@@ -85,7 +92,7 @@ void Framework::ShutDown()
 //Send to Client
 void Framework::SendPacket(Framework::SERIAL_TYPE serial, unsigned char* packet) const
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial
+	if (IsValidClientSerial(serial) == false
 		|| packet == nullptr) return;
 	
 	auto& client =  clients[serial];
@@ -96,7 +103,7 @@ void Framework::SendPacket(Framework::SERIAL_TYPE serial, unsigned char* packet)
 	{
 		overlapExp = new Overlap_Exp;
 	}
-	catch(...)
+	catch(const std::bad_alloc&)
 	{
 		std::cout << "SendPacket() - new error!\n";
 		return;
@@ -107,7 +114,7 @@ void Framework::SendPacket(Framework::SERIAL_TYPE serial, unsigned char* packet)
 	overlapExp->Operation = OPERATION_SEND;
 	overlapExp->WsaBuf.buf = reinterpret_cast<CHAR *>(overlapExp->Iocp_Buffer);
 	overlapExp->WsaBuf.len = GetPacketSize(packet);
-	memcpy(overlapExp->Iocp_Buffer, packet, overlapExp->WsaBuf.len);
+	std::memcpy(overlapExp->Iocp_Buffer, packet, overlapExp->WsaBuf.len);
 
 	int ret = ::WSASend(client->ClientSocket, &overlapExp->WsaBuf, 1, NULL, 0,
 		&overlapExp->Original_Overlap, NULL);
@@ -123,8 +130,9 @@ void Framework::SendPacket(Framework::SERIAL_TYPE serial, unsigned char* packet)
 
 void Framework::SendSystemMessage(Framework::SERIAL_TYPE serial, const std::string& msg) const
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return;
-	if (clients[serial]->IsLogin == false) return;
+	if (IsValidClientSerial(serial) == false 
+		|| clients[serial]->IsLogin == false) 
+		return;
 
 	packet_system to_packet;
 	::ZeroMemory(&to_packet, sizeof(to_packet));
@@ -139,7 +147,7 @@ void Framework::SendSystemMessage(Framework::SERIAL_TYPE serial, const std::stri
 //Received from Client
 void Framework::ProcessPacket(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial
+	if (IsValidClientSerial(serial) == false
 		|| packet == nullptr) return;
 
 	switch (GetPacketType(packet))
@@ -169,7 +177,8 @@ void Framework::ProcessPacket(Framework::SERIAL_TYPE serial, unsigned char* pack
 
 void Framework::ProcessUserClose(Framework::SERIAL_TYPE serial)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return;
+	if (IsValidClientSerial(serial) == false) return;
+	
 	auto& client = GetClient(serial);
 	if (client.IsLogin == false) return;
 
@@ -193,7 +202,7 @@ void Framework::ProcessUserClose(Framework::SERIAL_TYPE serial)
 
 void Framework::ProcessLogin(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial
+	if (IsValidClientSerial(serial) == false
 		|| packet == nullptr) return;
 
 	packet_login* from_packet = reinterpret_cast<packet_login*>(packet);
@@ -228,8 +237,9 @@ void Framework::ProcessLogin(Framework::SERIAL_TYPE serial, unsigned char* packe
 
 void Framework::ProcessChannelList(Framework::SERIAL_TYPE serial)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial) return;
-	if (clients[serial]->IsLogin == false) return;
+	if (IsValidClientSerial(serial) == false
+		|| clients[serial]->IsLogin == false)
+		return;
 
 	packet_channel_list channelList_packet;
 	::ZeroMemory(&channelList_packet, sizeof(channelList_packet));
@@ -261,7 +271,7 @@ void Framework::ProcessChannelList(Framework::SERIAL_TYPE serial)
 
 void Framework::ProcessChatting(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial
+	if (IsValidClientSerial(serial) == false
 		|| packet == nullptr) return;
 
 	auto& client =GetClient(serial);
@@ -290,7 +300,7 @@ void Framework::ProcessChatting(Framework::SERIAL_TYPE serial, unsigned char* pa
 
 void Framework::ProcessKick(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial
+	if (IsValidClientSerial(serial) == false
 		|| packet == nullptr) return;
 
 	if (clients[serial]->IsLogin == false) return;
@@ -332,7 +342,7 @@ void Framework::ProcessKick(Framework::SERIAL_TYPE serial, unsigned char* packet
 
 void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned char* packet)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial
+	if (IsValidClientSerial(serial) == false
 		|| packet == nullptr) return;
 
 	auto& client =GetClient(serial);
@@ -380,31 +390,28 @@ void Framework::ProcessChannelChange(Framework::SERIAL_TYPE serial, unsigned cha
 //Private Functions
 
 
-//return integer [-1, MAX_PUBLIC_CHANNEL_COUNT), '-1' means public channels are busy
+//return integer SERIAL_ERROR, [0, MAX_PUBLIC_CHANNEL_COUNT)... 'SERIAL_ERROR' means public channels are busy
 Framework::SERIAL_TYPE Framework::GetRandomPublicChannelSerial() const
 {
-	const unsigned int publicChannelCount = publicChannels.size();
-	std::uniform_int_distribution<int> uid(0, publicChannelCount - 1);
 	static std::default_random_engine dre;
 
-	std::vector<bool> channelIsFull(publicChannelCount, false);
-	Framework::SERIAL_TYPE randSlot = SERIAL_ERROR;
-	size_t fullChannelCount = 0;
+	const unsigned int publicChannelCount = publicChannels.size();	
+	std::vector<unsigned int> slots(publicChannelCount);
+	std::iota(slots.begin(), slots.end(), 0);
 
-	while (true)
+	for(auto i = 0; i < PUBLIC_BUSY_COUNT; ++i)
 	{
-		randSlot = uid(dre);
-		if (publicChannels[randSlot]->GetUserCount() < MAX_CHANNEL_USERS)
-			return randSlot;
-		else if(channelIsFull[randSlot] == false)
-		{
-			channelIsFull[randSlot] = true;
-			++fullChannelCount;
+		unsigned int toPickLength = publicChannelCount - i;
+		std::uniform_int_distribution<unsigned int> uid(0, toPickLength - 1);
+		unsigned int slot = uid(dre);
 
-			if(fullChannelCount >= PUBLIC_BUSY_COUNT)	//어느정도 채널 내 유저가 차있다면 혼잡한 상태로 한다.
-				return -1;
-		}
+		if (publicChannels[slots[slot]]->GetUserCount() < MAX_CHANNEL_USERS)
+			return slots[slot];
+		else
+			std::swap(slots[slot], slots[toPickLength - 1]);
 	}
+
+	return SERIAL_ERROR;
 }
 
 Framework::SERIAL_TYPE Framework::GetSerialForNewCustomChannel()
@@ -423,16 +430,17 @@ Framework::SERIAL_TYPE Framework::GetSerialForNewCustomChannel()
 	return customSerial;
 }
 
-void Framework::BroadcastToChannel(std::shared_ptr<Channel>& channel, unsigned char* packet)
+void Framework::BroadcastToChannel(std::shared_ptr<Channel>& channel, unsigned char* packet) const
 {
-	if (packet == nullptr) return;
+	if (channel == nullptr || packet == nullptr) return;
+
 	for (auto* client : channel->GetClientsInChannel())
-			SendPacket(client->Serial, packet);
+		SendPacket(client->Serial, packet);
 }
 
 void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel)
 {
-	if (leaver < 0 || MAX_CLIENT_COUNT <= leaver) return;
+	if (IsValidClientSerial(leaver) == false) return;
 
 	auto& client = GetClient(leaver);
 	if (client.IsLogin == false) return;
@@ -452,18 +460,16 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 	channel->Exit(&client);	//퇴장에 의해 방장이 변경될 수 있다.
 
 	if (client.UserName == beforeMasterName)
-	{	
+	{	//본 조건문이 진행되는 경우는 channel이 반드시 CustomChannel 이다.
 		isMasterChanged = true;
 
 		if (channel->GetUserCount() == 0)
-		{	//채널 파기, 본 조건문이 진행되는 경우는 channel이 반드시 CustomChannel 이다.
+		{	//채널 파기
 			std::unique_lock<std::mutex> ulCustom(customChannelsLock);
 			validCustomChannelSerials.push(usedCustomChannelNames[channelName]);
 			usedCustomChannelNames.erase(channelName);
 			ulCustom.unlock();
-			
-			CustomChannel* closedChannel = static_cast<CustomChannel*>(channel.get());
-			closedChannel->CloseChannel();
+
 			return; //후속처리(채널에 남은 유저들에게 정보 전송)가 필요하지 않아 return
 		}
 	}
@@ -499,10 +505,10 @@ void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 	while (isConnected != CHANNEL_CONNECT::SUCCESS)
 	{
 		Framework::SERIAL_TYPE randSlot = GetRandomPublicChannelSerial();
-		if (randSlot == -1)
+		if (randSlot == SERIAL_ERROR)
 		{	//모든 공개채널이 가득 찬 상태로, 채널에 입장하지 못한 상태
 			//스타크래프트1 배틀넷의 Void 채널과 유사
-			SendSystemMessage(serial, "***System*** 모든 공개채널이 혼잡하여 연결하지 못했습니다.");
+			SendSystemMessage(serial, "***System*** 공개채널이 혼잡하여 연결하지 못했습니다.");
 			return;
 		}
 		else
@@ -513,7 +519,7 @@ void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 Framework::CHANNEL_CONNECT 
 	Framework::ConnectToChannel(Framework::SERIAL_TYPE serial, const std::string& channelName)
 {
-	if (serial < 0 || MAX_CLIENT_COUNT <= serial) 
+	if (IsValidClientSerial(serial) == false)
 		return CHANNEL_CONNECT::FAIL_ARGUMENT;
 
 	auto& client = GetClient(serial);
@@ -644,35 +650,6 @@ void Framework::AddNewCustomChannel(const std::string& channelName)
 	usedCustomChannelNames.insert(std::make_pair(channelName, customSerial));
 	customChannels[customSerial]->InitializeChannel(channelName);
 }
-
-
-
-Framework::SERIAL_TYPE Framework::DebugUserCount()
-{
-	//lock이 없어 정확하지 않음
-	Framework::SERIAL_TYPE userCount = 0;
-	for (Framework::SERIAL_TYPE i = 0; i < MAX_CLIENT_COUNT; ++i)
-	{
-		if (clients[i]->IsLogin) userCount++;
-	}
-	return userCount;
-}
-
-std::vector<std::string> 
-	Framework::DebugCustomChannels()
-{
-	std::vector<std::string> customs;
-
-	std::unique_lock<std::mutex> ulLogin(customChannelsLock);
-	for (auto& ch : customChannels)
-	{
-		if (ch->IsCreated())
-			customs.emplace_back(ch->GetChannelName());
-	}
-
-	return customs;
-}
-
 
 
 namespace

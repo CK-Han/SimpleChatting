@@ -94,10 +94,12 @@ void CustomChannel::Exit(const Client* client)
 	Channel::Exit(client);
 
 	if (client->UserName == GetChannelMaster()
-		&& GetUserCount() > 0)
+		&& GetUserCount() > 1)
 	{	//리스트에서 가장 오래 지낸 유저(front)에게 방장을 넘긴다.
 		SetChannelMaster(GetClientsInChannel().front()->UserName);
 	}
+	else if (GetUserCount() == 0)
+		CloseChannel();
 }
 
 
