@@ -10,7 +10,7 @@ namespace
 
 } //unnamed namespace
 
-std::default_random_engine DummyHandler::RANDOM_ENGINE;
+thread_local std::default_random_engine DummyHandler::RANDOM_ENGINE;
 
 DummyHandler::DummyHandler()
 	: hIocp(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0))
@@ -84,10 +84,20 @@ bool DummyHandler::Start(const std::string& ip)
 		return false;
 	}
 
-	for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
-		workerThreads.emplace_back(new std::thread(WorkerThreadStart));
+	packetProcedures.insert(std::make_pair(Packet_Login::typeAdder.GetType(), &DummyHandler::Process_Login));
+	packetProcedures.insert(std::make_pair(Packet_Channel_Enter::typeAdder.GetType(), &DummyHandler::Process_ChannelEnter));
 
-	timerThread = std::unique_ptr<std::thread>(new std::thread(TimerThreadStart));
+	try
+	{
+		for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
+			workerThreads.emplace_back(new std::thread(WorkerThreadStart));
+
+		timerThread = std::unique_ptr<std::thread>(new std::thread(TimerThreadStart));
+	}
+	catch (const std::bad_alloc&)
+	{
+		std::cout << "Start() - thread new bad alloc\n";
+	}
 
 	isInitialized = true;
 	return isInitialized;
@@ -102,6 +112,8 @@ bool DummyHandler::AddDummy(unsigned int count
 		return false;
 	}
 
+	unsigned char buf[Packet_Base::MAX_BUF_SIZE];
+	Packet_Login loginPacket;
 	int serialOffset = lastSerial;
 	for (unsigned int i = 0; i < count; ++i)
 	{
@@ -135,15 +147,13 @@ bool DummyHandler::AddDummy(unsigned int count
 				std::cout << "AddDummy() - WSARecv " << "error code : " << error_no << std::endl;
 		}
 
-		packet_login loginPacket;
-		::ZeroMemory(&loginPacket, sizeof(loginPacket));
-		loginPacket.Size = sizeof(loginPacket);
-		loginPacket.Type = PACKET_LOGIN;
-		loginPacket.Created = false;
 		std::string id("Dummy" + std::to_string(newSerial));
-		std::memcpy(loginPacket.User, id.c_str(), id.size());
+		loginPacket.isCreated = false;
+		loginPacket.userName = id;
+		StreamWriter loginStream(buf, sizeof(buf));
+		loginPacket.Serialize(loginStream);
 		
-		SendPacket(newSerial, reinterpret_cast<unsigned char*>(&loginPacket));
+		SendPacket(newSerial, loginStream.GetBuffer());
 
 		::Sleep(1);
 	}
@@ -181,7 +191,7 @@ bool DummyHandler::IsValidSerial(int serial) const
 
 ////////////////////////////////////////////////////////////////////////////
 //Packet Handling
-void DummyHandler::SendPacket(int serial, unsigned char* packet) const
+void DummyHandler::SendPacket(int serial, const void* packet) const
 {
 	if (IsValidSerial(serial) == false
 		|| packet == nullptr)
@@ -215,56 +225,49 @@ void DummyHandler::SendPacket(int serial, unsigned char* packet) const
 	}
 }
 
-void DummyHandler::ProcessPacket(int serial, unsigned char* packet)
+void DummyHandler::ProcessPacket(int serial, const void* packet, int size)
 {
 	if (IsValidSerial(serial) == false
 		|| packet == nullptr)
 		return;
 
-	//더미를 수정하는, 즉 로그인 처리와 채널관련 처리만 진행하면 된다.
-	switch (GetPacketType(packet))
-	{
-	case PACKET_LOGIN:
-		ProcessLogin(serial, packet);
-		break;
-	case PACKET_CHANNEL_ENTER:
-		ProcessChannelEnter(serial, packet);
-		break;
+	auto type = GetPacketType(packet);
+	StreamReader stream(packet, size);
 
-	default:
-		break;
-	}
+	auto procedure = packetProcedures.find(type);
+	if (procedure == packetProcedures.end())
+		; //무시하는 패킷들
+	else
+		(this->*packetProcedures[type])(serial, stream);
 }
 
 
 ////////////////////////////////////////////////////////////////////////////
 //Process
-void DummyHandler::ProcessLogin(int serial, unsigned char* packet)
+void DummyHandler::Process_Login(int serial, StreamReader& in)
 {
-	if (IsValidSerial(serial) == false
-		|| packet == nullptr)
-		return;
+	if (IsValidSerial(serial) == false) return;
 
-	packet_login* my_packet = reinterpret_cast<packet_login*>(packet);
+	Packet_Login loginPacket;
+	loginPacket.Deserialize(in);
 
 	std::unique_lock<std::mutex> ulDummy(dummies[serial].first.GetLock());
-	dummies[serial].first.userName = my_packet->User;
-	dummies[serial].first.isLogin = true;
+	dummies[serial].first.userName = loginPacket.userName;
+	dummies[serial].first.isLogin = loginPacket.isCreated;
 	ulDummy.unlock();
 
 	AddRandomPacketEvent(serial);
 }
 
-void DummyHandler::ProcessChannelEnter(int serial, unsigned char* packet)
+void DummyHandler::Process_ChannelEnter(int serial, StreamReader& in)
 {
-	if (IsValidSerial(serial) == false
-		|| packet == nullptr)
-		return;
+	if (IsValidSerial(serial) == false)	return;
 
-	packet_channel_enter* my_packet = reinterpret_cast<packet_channel_enter*>(packet);
+	Packet_Channel_Enter enterPacket;
+	enterPacket.Deserialize(in);
 
 	std::unique_lock<std::mutex> ulDummy(dummies[serial].first.GetLock());
-	dummies[serial].first.userChannel = my_packet->ChannelName;
+	dummies[serial].first.userChannel = enterPacket.channelName;
 }
 
 ////////////////////////////////////////////////////////////////////////////
@@ -326,17 +329,17 @@ void DummyHandler::RequestWhisper(int serial)
 
 	std::string chat("This is whisper! ID : " + std::to_string(serial));
 	
-	packet_chatting chattingPacket;
-	::ZeroMemory(&chattingPacket, sizeof(chattingPacket));
-	chattingPacket.Size = sizeof(chattingPacket);
-	chattingPacket.Type = PACKET_CHATTING;
-	chattingPacket.IsWhisper = true;
+	Packet_Chatting chatPacket;
+	chatPacket.isWhisper = true;
+	chatPacket.talker = dummy.userName;
+	chatPacket.listener = randomListener;
+	chatPacket.chat = chat;
 
-	std::memcpy(chattingPacket.Talker, dummy.userName.c_str(), dummy.userName.size());
-	std::memcpy(chattingPacket.Listner, randomListener.c_str(), randomListener.size());
-	std::memcpy(chattingPacket.Chat, chat.c_str(), chat.size());
+	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	StreamWriter chatStream(buf, sizeof(buf));
+	chatPacket.Serialize(chatStream);
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(&chattingPacket));
+	SendPacket(serial, chatStream.GetBuffer());
 }
 
 void DummyHandler::RequestChannelList(int serial)
@@ -344,12 +347,15 @@ void DummyHandler::RequestChannelList(int serial)
 	if (IsValidSerial(serial) == false
 		|| dummies[serial].first.isLogin == false) return;
 
-	packet_channel_list channelListPacket;
-	::ZeroMemory(&channelListPacket, sizeof(channelListPacket));
-	channelListPacket.Size = sizeof(channelListPacket);
-	channelListPacket.Type = PACKET_CHANNEL_LIST;
+	Packet_Channel_List listPacket;
+	listPacket.customChannelCount = 0;
+	listPacket.publicChannelNames.clear();
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(&channelListPacket));
+	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	StreamWriter listStream(buf, sizeof(buf));
+	listPacket.Serialize(listStream);
+
+	SendPacket(serial, listStream.GetBuffer());
 }
 
 void DummyHandler::RequestChannelChange(int serial)
@@ -362,13 +368,15 @@ void DummyHandler::RequestChannelChange(int serial)
 		|| (randomChannel == dummies[serial].first.userChannel))
 		return;
 
-	packet_channel_enter enterPacket;
-	::ZeroMemory(&enterPacket, sizeof(enterPacket));
-	enterPacket.Size = sizeof(enterPacket);
-	enterPacket.Type = PACKET_CHANNEL_ENTER;
-	std::memcpy(enterPacket.ChannelName, randomChannel.c_str(), randomChannel.size());
+	Packet_Channel_Enter enterPacket;
+	enterPacket.channelName = randomChannel;
+	enterPacket.channelMaster.clear();
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(&enterPacket));
+	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	StreamWriter enterStream(buf, sizeof(buf));
+	enterPacket.Serialize(enterStream);
+
+	SendPacket(serial, enterStream.GetBuffer());
 }
 
 void DummyHandler::RequestKick(int serial)
@@ -378,22 +386,22 @@ void DummyHandler::RequestKick(int serial)
 
 	Dummy& dummy = dummies[serial].first;
 	
-	packet_kick_user kickPacket;
-	::ZeroMemory(&kickPacket, sizeof(kickPacket));
-	kickPacket.Size = sizeof(kickPacket);
-	kickPacket.Type = PACKET_KICK_USER;
-	
 	//채널이 다르거나 방장이 아니라도 강퇴 요청은 전송한다.
 	std::string randomTarget = GetRandomUser();
 	if (randomTarget.empty()
 		|| (randomTarget == dummy.userName))
 		return;
 
-	std::memcpy(kickPacket.Target, randomTarget.c_str(), randomTarget.size());
-	std::memcpy(kickPacket.Kicker, dummy.userName.c_str(), dummy.userName.size());
-	std::memcpy(kickPacket.Channel, dummy.userChannel.c_str(), dummy.userChannel.size());
+	Packet_Kick_User kickPacket;
+	kickPacket.target = randomTarget;
+	kickPacket.kicker = dummy.userName;
+	kickPacket.channelName = dummy.userChannel;
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(&kickPacket));
+	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	StreamWriter kickStream(buf, sizeof(buf));
+	kickPacket.Serialize(kickStream);
+
+	SendPacket(serial, kickStream.GetBuffer());
 }
 
 void DummyHandler::RequestChatting(int serial)
@@ -402,19 +410,19 @@ void DummyHandler::RequestChatting(int serial)
 		|| dummies[serial].first.isLogin == false) return;
 
 	Dummy& dummy = dummies[serial].first;
-	
-	packet_chatting chatPacket;
-	::ZeroMemory(&chatPacket, sizeof(chatPacket));
-	chatPacket.Size = sizeof(chatPacket);
-	chatPacket.Type = PACKET_CHATTING;
-	chatPacket.IsWhisper = false;
-
 	std::string chat("This is test! ID : " + std::to_string(serial));
 
-	std::memcpy(chatPacket.Talker, dummy.userName.c_str(), dummy.userName.size());
-	std::memcpy(chatPacket.Chat, chat.c_str(), chat.size());
+	Packet_Chatting chatPacket;
+	chatPacket.isWhisper = false;
+	chatPacket.talker = dummy.userName;
+	chatPacket.listener.clear();
+	chatPacket.chat = chat;
 
-	SendPacket(serial, reinterpret_cast<unsigned char*>(&chatPacket));
+	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	StreamWriter chatStream(buf, sizeof(buf));
+	chatPacket.Serialize(chatStream);
+
+	SendPacket(serial, chatStream.GetBuffer());
 }
 
 
@@ -459,7 +467,7 @@ std::string DummyHandler::GetRandomChannel() const
 	else //커스텀 채널로
 	{
 		std::string channelName;
-		const int channelLength = (slot % (MAX_CHANNELNAME_LENGTH - 1)) + 1;
+		const int channelLength = (slot % (Packet_Base::MAX_CHANNELNAME_SIZE - 1)) + 1;
 
 		for (int i = 0; i < channelLength; ++i)
 		{
@@ -513,9 +521,9 @@ namespace
 				unsigned char* ptrBuf = overlapExp->Iocp_Buffer;
 				int remained = 0;
 
-				if ((overlapInfo.PreviousCursor + iosize) > MAX_BUFF_SIZE)
+				if ((overlapInfo.PreviousCursor + iosize) > Packet_Base::MAX_BUF_SIZE)
 				{
-					int empty = MAX_BUFF_SIZE - overlapInfo.PreviousCursor;
+					int empty = Packet_Base::MAX_BUF_SIZE - overlapInfo.PreviousCursor;
 					std::memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousCursor, ptrBuf, empty);
 
 					remained = iosize - empty;
@@ -534,7 +542,7 @@ namespace
 
 					if (overlapInfo.PacketSize <= overlapInfo.PreviousCursor)
 					{	//조립가능
-						handler->ProcessPacket(serial, overlapInfo.PacketBuff);
+						handler->ProcessPacket(serial, overlapInfo.PacketBuff, overlapInfo.PacketSize);
 						std::memmove(overlapInfo.PacketBuff, overlapInfo.PacketBuff + overlapInfo.PacketSize
 							, overlapInfo.PreviousCursor - overlapInfo.PacketSize);
 

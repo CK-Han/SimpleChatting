@@ -21,7 +21,7 @@ bool Dummy::Connect(const char* serverIP)
 	SOCKADDR_IN serverAddr;
 	::ZeroMemory(&serverAddr, sizeof(SOCKADDR_IN));
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(MY_SERVER_PORT);
+	serverAddr.sin_port = htons(Packet_Base::PORT_NUMBER);
 	serverAddr.sin_addr.s_addr = inet_addr(serverIP);
 
 	int result = WSAConnect(clientSocket, (sockaddr *)&serverAddr, sizeof(serverAddr), nullptr, nullptr, nullptr, nullptr);

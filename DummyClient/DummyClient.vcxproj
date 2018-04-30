@@ -142,12 +142,15 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\Common\protocol.cpp" />
+    <ClCompile Include="..\Common\stream.cpp" />
     <ClCompile Include="Dummy.cpp" />
     <ClCompile Include="DummyHandler.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\Common\Protocol.h" />
+    <ClInclude Include="..\Common\protocol.h" />
+    <ClInclude Include="..\Common\stream.h" />
     <ClInclude Include="Dummy.h" />
     <ClInclude Include="DummyHandler.h" />
   </ItemGroup>

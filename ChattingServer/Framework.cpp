@@ -390,7 +390,7 @@ void Framework::Process_ChannelChange(Framework::SERIAL_TYPE serial, StreamReade
 Framework::SERIAL_TYPE Framework::GetRandomPublicChannelSerial() const
 {
 	static thread_local std::default_random_engine dre;
-
+	
 	const unsigned int publicChannelCount = publicChannels.size();	
 	std::vector<unsigned int> slots(publicChannelCount);
 	std::iota(slots.begin(), slots.end(), 0);

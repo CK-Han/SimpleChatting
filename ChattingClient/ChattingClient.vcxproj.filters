@@ -50,9 +50,6 @@
     <ClInclude Include="..\Common\stream.h">
       <Filter>Common</Filter>
     </ClInclude>
-    <ClInclude Include="..\Common\Before_Protocol.h">
-      <Filter>Common</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="ChattingClient.rc">

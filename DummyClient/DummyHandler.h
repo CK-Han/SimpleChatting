@@ -1,12 +1,15 @@
 #pragma once
 
 #include "Dummy.h"
+#include "../Common/protocol.h"
+#include "../Common/stream.h"
 #include <vector>
 #include <string>
 #include <memory>
 #include <mutex>
 #include <queue>
 #include <set>
+#include <map>
 #include <random>
 
 
@@ -22,7 +25,7 @@ struct Overlap_Exp
 	::WSAOVERLAPPED Original_Overlap;
 	int Operation;
 	WSABUF WsaBuf;
-	unsigned char Iocp_Buffer[MAX_BUFF_SIZE];
+	unsigned char Iocp_Buffer[Packet_Base::MAX_BUF_SIZE];
 };
 
 struct Overlap_Info
@@ -31,7 +34,7 @@ struct Overlap_Info
 
 	unsigned int			PacketSize;
 	unsigned int			PreviousCursor;
-	unsigned char			PacketBuff[MAX_BUFF_SIZE];
+	unsigned char			PacketBuff[Packet_Base::MAX_BUF_SIZE];
 };
 
 struct Event_Info
@@ -59,8 +62,9 @@ private:
 	static constexpr unsigned int MAX_DUMMY_COUNT		 = 10000;
 	static constexpr unsigned int PACKET_DELAY_TIME		 = 2000;
 
-	static std::default_random_engine RANDOM_ENGINE;
+	static thread_local std::default_random_engine RANDOM_ENGINE;
 	using Timer_Queue = std::priority_queue < Event_Info, std::vector<Event_Info>, Event_Compare>;
+	using Packet_Procedure = void(DummyHandler::*)(int /*serial*/, StreamReader&);
 
 public:
 	static DummyHandler* GetInstance()
@@ -75,8 +79,8 @@ public:
 	bool AddDummy(unsigned int count, const std::string& ip);
 	bool CloseDummy(unsigned int count);
 
-	void SendPacket(int serial, unsigned char* packet) const;
-	void ProcessPacket(int serial, unsigned char* packet);
+	void SendPacket(int serial, const void* packet) const;
+	void ProcessPacket(int serial, const void* packet, int size);
 
 	void SendRandomPacket(int serial);
 
@@ -95,8 +99,8 @@ private:
 	DummyHandler();
 	~DummyHandler();
 
-	void			ProcessLogin(int serial, unsigned char* packet);
-	void			ProcessChannelEnter(int serial, unsigned char* packet);
+	void			Process_Login(int serial, StreamReader&);
+	void			Process_ChannelEnter(int serial, StreamReader&);
 
 	void			AddRandomPacketEvent(int serial);
 	
@@ -124,5 +128,7 @@ private:
 	std::vector<std::string>						publicChannels;
 
 	Timer_Queue										timerQueue;
+
+	std::map<Packet_Base::ValueType /*type*/, Packet_Procedure>		packetProcedures;
 };
 
