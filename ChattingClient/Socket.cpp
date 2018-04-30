@@ -42,7 +42,7 @@ bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 	SOCKADDR_IN serverAddr;
 	::ZeroMemory(&serverAddr, sizeof(SOCKADDR_IN));
 	serverAddr.sin_family = AF_INET;
-	serverAddr.sin_port = htons(MY_SERVER_PORT);
+	serverAddr.sin_port = htons(Packet_Base::PORT_NUMBER);
 	serverAddr.sin_addr.s_addr = inet_addr(serverIP);
 
 	int Result = WSAConnect(clientSocket, (sockaddr *)&serverAddr, sizeof(serverAddr), nullptr, nullptr, nullptr, nullptr);
@@ -93,7 +93,7 @@ void Socket::ReadPacket(SOCKET sock)
 
 		if (inPacketSize <= savedPacketSize)
 		{	//조립가능
-			ProcessPacket(packetBuf);
+			ProcessPacket(packetBuf, inPacketSize);
 			std::memmove(packetBuf, packetBuf + inPacketSize
 				, savedPacketSize - inPacketSize);
 
@@ -110,7 +110,7 @@ void Socket::ReadPacket(SOCKET sock)
 }
 
 
-void Socket::SendPacket(unsigned char* packet)
+void Socket::SendPacket(const void* packet)
 {
 	DWORD ioBytes = 0;
 	sendWsaBuf.len = GetPacketSize(packet);
@@ -121,7 +121,7 @@ void Socket::SendPacket(unsigned char* packet)
 	}
 }
 
-void Socket::ProcessPacket(unsigned char* packet)
+void Socket::ProcessPacket(const unsigned char* packet, int size)
 {
-	Framework::GetInstance()->ProcessPacket(packet);
+	Framework::GetInstance()->ProcessPacket(packet, size);
 }

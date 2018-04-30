@@ -15,9 +15,9 @@ public:
 	WSABUF&		GetSendWsaBuf() { return sendWsaBuf; }
 
 	void ReadPacket(SOCKET sock);
-	void SendPacket(unsigned char* packet);
+	void SendPacket(const void* packet);
 
-	void ProcessPacket(unsigned char* packet);
+	void ProcessPacket(const unsigned char* packet, int size);
 
 
 private:
@@ -26,10 +26,10 @@ private:
 	SOCKET					clientSocket;
 	bool					isInitialized;
 	WSABUF					sendWsaBuf;
-	unsigned char			sendBuf[MAX_BUFF_SIZE];
+	unsigned char			sendBuf[Packet_Base::MAX_BUF_SIZE];
 	WSABUF					recvWsaBuf;
-	unsigned char			recvBuf[MAX_BUFF_SIZE];
-	unsigned char			packetBuf[MAX_BUFF_SIZE];
+	unsigned char			recvBuf[Packet_Base::MAX_BUF_SIZE];
+	unsigned char			packetBuf[Packet_Base::MAX_BUF_SIZE];
 
 	int						inPacketSize;
 	int						savedPacketSize;

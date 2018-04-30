@@ -21,13 +21,12 @@ public:
 	std::string							GetChannelMaster() const { return channelMaster; }
 	std::mutex&							GetChannelLock() { return channelLock; }
 	const std::list<const Client*>&		GetClientsInChannel() const { return clientsInChannel; }
-	std::list<const Client*>&			GetClientsInChannel() { return clientsInChannel; }
-
+	
 protected:	
 	void								SetChannelMaster(const std::string& master) { channelMaster = master; }
 	void								SetChannelName(const std::string& name) { channelName = name; }
 
-private:
+protected:
 	std::string						channelName;
 	std::string						channelMaster;
 	std::list<const Client*>		clientsInChannel;

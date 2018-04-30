@@ -1,7 +1,7 @@
 #pragma once
 #include <WinSock2.h>
 #include <string>
-#include "../Common/Protocol.h"
+#include "../Common/protocol.h"
 
 enum Overlap_Operation {
 	OPERATION_RECV = 1
@@ -13,7 +13,7 @@ struct Overlap_Exp
 	::WSAOVERLAPPED Original_Overlap;
 	int Operation;
 	WSABUF WsaBuf;
-	unsigned char Iocp_Buffer[MAX_BUFF_SIZE];
+	unsigned char Iocp_Buffer[Packet_Base::MAX_BUF_SIZE];
 };
 
 struct Client
@@ -24,7 +24,7 @@ struct Client
 	Overlap_Exp			RecvOverlap;
 	int					PacketSize;
 	int					PreviousCursor;
-	unsigned char		PacketBuff[MAX_BUFF_SIZE];
+	unsigned char		PacketBuff[Packet_Base::MAX_BUF_SIZE];
 
 	std::string			UserName;
 	std::string			ChannelName;

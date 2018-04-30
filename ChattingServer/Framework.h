@@ -17,6 +17,7 @@ class Framework
 {
 public:
 	using SERIAL_TYPE = decltype(Client::Serial);
+	using Packet_Procedure = void(Framework::*)(SERIAL_TYPE, StreamReader&);
 
 	static const unsigned int	GQCS_TIMEOUT_MILLISECONDS = 3000;
 	static const unsigned int	ACCEPT_TIMEOUT_SECONDS = 3;
@@ -26,6 +27,7 @@ public:
 	static const unsigned int	MAX_CLIENT_COUNT = 10000;
 	static const unsigned int	MAX_CUSTOM_COUNT = 10000;
 	static const unsigned int	PUBLIC_BUSY_COUNT = 3;
+	static const unsigned int	MAX_CHANNEL_USERS = 200;
 	static const SERIAL_TYPE	SERIAL_ERROR = -1;
 	
 
@@ -52,16 +54,17 @@ public:
 	Client&						GetClient(SERIAL_TYPE serial) { return *clients[serial]; }
 	SERIAL_TYPE					GetSerialForNewClient();
 
-	void		SendPacket(SERIAL_TYPE serial, unsigned char* packet) const;
+	void		SendPacket(SERIAL_TYPE serial, const void* packet) const;
 	void		SendSystemMessage(SERIAL_TYPE serial, const std::string& msg) const;
 	
-	void		ProcessPacket(SERIAL_TYPE serial, unsigned char* packet);
-	void		ProcessUserClose(SERIAL_TYPE serial);
-	void		ProcessLogin(SERIAL_TYPE serial, unsigned char* packet);
-	void		ProcessChannelList(SERIAL_TYPE serial);
-	void		ProcessChatting(SERIAL_TYPE serial, unsigned char* packet);
-	void		ProcessKick(SERIAL_TYPE serial, unsigned char* packet);
-	void		ProcessChannelChange(SERIAL_TYPE serial, unsigned char* packet);
+	void		ProcessUserClose(SERIAL_TYPE serial);	//disconnect
+	void		ProcessPacket(SERIAL_TYPE serial, unsigned char* packet, int size);
+	
+	void		Process_Login(SERIAL_TYPE serial, StreamReader&);
+	void		Process_ChannelList(SERIAL_TYPE serial, StreamReader&);
+	void		Process_Chatting(SERIAL_TYPE serial, StreamReader&);
+	void		Process_Kick(SERIAL_TYPE serial, StreamReader&);
+	void		Process_ChannelChange(SERIAL_TYPE serial, StreamReader&);
 
 
 private:
@@ -73,7 +76,7 @@ private:
 
 	SERIAL_TYPE				GetRandomPublicChannelSerial() const;
 	SERIAL_TYPE				GetSerialForNewCustomChannel();
-	void					BroadcastToChannel(std::shared_ptr<Channel>& channel, unsigned char* packet) const;
+	void					BroadcastToChannel(std::shared_ptr<Channel>& channel, const void* packet) const;
 
 	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel);
 	void					ConnectToRandomPublicChannel(SERIAL_TYPE serial);
@@ -104,5 +107,7 @@ private:
 
 	std::vector<std::shared_ptr<PublicChannel>>		publicChannels;
 	std::vector<std::shared_ptr<CustomChannel>>		customChannels;
+
+	std::map<Packet_Base::ValueType /*type*/, Packet_Procedure>		packetProcedures;
 };
 

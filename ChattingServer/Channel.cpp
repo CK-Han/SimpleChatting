@@ -105,14 +105,14 @@ void CustomChannel::Exit(const Client* client)
 
 void CustomChannel::InitializeChannel(const std::string& chName)
 {
-	GetClientsInChannel().clear();
+	clientsInChannel.clear();
 	isCreated = true;
 	SetChannelName(chName);
 }
 
 void CustomChannel::CloseChannel()
 {
-	GetClientsInChannel().clear();
+	clientsInChannel.clear();
 	isCreated = false;
 	SetChannelMaster("");
 	SetChannelName("");

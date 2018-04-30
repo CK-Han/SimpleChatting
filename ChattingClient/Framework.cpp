@@ -1,5 +1,6 @@
 #include "Socket.h"
 #include "Framework.h"
+#include "../Common/stream.h"
 #include <sstream>
 #include <vector>
 #include <cctype>
@@ -46,7 +47,7 @@ std::vector<std::string>
 Framework::Framework()
 	: clientWidth(0)
 	, clientHeight(0)
-	, isInitialized(false)
+	, isRunning(false)
 	, isLogin(false)
 	, mainWindow(NULL)
 	, mainInstance(NULL)
@@ -67,16 +68,27 @@ Framework::~Framework()
 }
 
 
-bool Framework::Initialize(HWND hWnd, HINSTANCE instance)
+bool Framework::Run(HWND hWnd, HINSTANCE instance)
 {
 	if (hWnd == NULL || instance == NULL)
 		return false;
 
-	if (isInitialized == true)
+	if (isRunning == true)
 	{
 		::MessageBox(hWnd, "이미 초기화되었습니다.", "Error", MB_OK);
 		return false;
 	}
+
+	//패킷 처리함수
+	procedures.insert(std::make_pair(Packet_System::typeAdder.GetType(), &Framework::Process_SystemMessage));
+	procedures.insert(std::make_pair(Packet_Login::typeAdder.GetType(), &Framework::Process_Login));
+	procedures.insert(std::make_pair(Packet_Channel_List::typeAdder.GetType(), &Framework::Process_ChannelList));
+	procedures.insert(std::make_pair(Packet_Channel_Enter::typeAdder.GetType(), &Framework::Process_ChannelEnter));
+	procedures.insert(std::make_pair(Packet_Channel_Users::typeAdder.GetType(), &Framework::Process_ChannelUsers));
+	procedures.insert(std::make_pair(Packet_Newface_Enter::typeAdder.GetType(), &Framework::Process_NewfaceEnter));
+	procedures.insert(std::make_pair(Packet_User_Leave::typeAdder.GetType(), &Framework::Process_UserLeave));
+	procedures.insert(std::make_pair(Packet_Chatting::typeAdder.GetType(), &Framework::Process_Chatting));
+	procedures.insert(std::make_pair(Packet_New_Master::typeAdder.GetType(), &Framework::Process_NewMaster));
 
 	mainWindow = hWnd;
 	mainInstance = instance;
@@ -120,8 +132,8 @@ bool Framework::Initialize(HWND hWnd, HINSTANCE instance)
 		rect.right - BLANK - CHANNEL_WIDTH, BLANK, CHANNEL_WIDTH, COMMAND_HEIGHT
 		, hWnd, 0, mainInstance, NULL);
 
-	isInitialized = true;
-	return isInitialized;
+	isRunning = true;
+	return isRunning;
 }
 
 void Framework::ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
@@ -156,12 +168,12 @@ void Framework::ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
 
 void Framework::ProcessInput()
 {
-	char input[MAX_CHATTING_SIZE];
-	::GetWindowText(editInput, input, MAX_CHATTING_SIZE);
+	char input[Packet_Base::MAX_MESSAGE_SIZE];
+	::GetWindowText(editInput, input, Packet_Base::MAX_MESSAGE_SIZE);
 	::SetWindowText(editInput, "");
 
 	std::string str(input);
-	str = str.substr(0, MAX_CHATTING_SIZE);
+	str = str.substr(0, Packet_Base::MAX_MESSAGE_SIZE);
 	if (str.empty())
 		return;	
 	else if (isLogin == false)
@@ -298,119 +310,104 @@ void Framework::SeekLastAddedCursor(HWND listBox)
 ////////////////////////////////////////////////////////////////////////////
 //Receive From Server
 
-void Framework::ProcessPacket(unsigned char* packet)
+void Framework::ProcessPacket(const unsigned char* packet, int size)
 {
-	switch (GetPacketType(packet))
-	{
-	case PACKET_SYSTEM:
-		ProcessSystemMessage(packet);
-		break;
-	case PACKET_LOGIN:
-		ProcessLogin(packet);
-		break;
-	case PACKET_CHANNEL_LIST:
-		ProcessChannelList(packet);
-		break;
-	case PACKET_CHANNEL_ENTER:
-		ProcessChannelEnter(packet);
-		break;
-	case PACKET_CHANNEL_USERS:
-		ProcessChannelUsers(packet);
-		break;
-	case PACKET_NEWFACE_ENTER:
-		ProcessNewfaceEnter(packet);
-		break;
-	case PACKET_USER_LEAVE:
-		ProcessUserLeave(packet);
-		break;
-	case PACKET_CHATTING:
-		ProcessChatting(packet);
-		break;
-	case PACKET_NEW_MASTER:
-		ProcessNewMaster(packet);
-		break;
+	if (packet == nullptr || size > Packet_Base::MAX_BUF_SIZE)
+		return;
 
-	default:
+	auto type = GetPacketType(packet);
+	StreamReader stream(packet, size);
+
+	auto procedure = procedures.find(type);
+	if (procedure == procedures.end())
 		::MessageBox(mainWindow, "ProcessPacket() Unknown packet Type", "Error!", MB_OK);
-		break;
-	}
+	else
+		(this->*procedures[type])(stream);
 }
 
 
-void Framework::ProcessSystemMessage(unsigned char* packet)
+void Framework::Process_SystemMessage(StreamReader& in)
 {
-	packet_system* my_packet = reinterpret_cast<packet_system*>(packet);
-	
-	::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(my_packet->SystemMessage));
+	Packet_System packet;
+	packet.Deserialize(in);
+
+	::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(packet.systemMessage.c_str()));
 	SeekLastAddedCursor(listLog);
 }
 
-void Framework::ProcessLogin(unsigned char* packet)
+void Framework::Process_Login(StreamReader& in)
 {
-	packet_login* my_packet = reinterpret_cast<packet_login*>(packet);
-	if (my_packet->Created == false)
+	Packet_Login packet;
+	packet.Deserialize(in);
+	
+	if (packet.isCreated == false)
 	{
 		MessageBox(mainWindow, "중복되어 사용 불가능한 아이디입니다. 다시 입력해 주세요", "생성 불가", MB_OK);
 		return;
 	}
 
-	userName = my_packet->User;
+	userName = packet.userName;
 	isLogin = true;
 }
 
-void Framework::ProcessChannelList(unsigned char* packet)
+void Framework::Process_ChannelList(StreamReader& in)
 {
-	packet_channel_list* my_packet = reinterpret_cast<packet_channel_list*>(packet);
-	
+	Packet_Channel_List packet;
+	packet.Deserialize(in);
+
+	size_t publicChannelCount = packet.publicChannelNames.size();
+
 	std::string sysMsg("***System*** ");
-	sysMsg += std::to_string((int)my_packet->PublicChannelCount);
+	sysMsg += std::to_string(publicChannelCount);
 	sysMsg += " 개의 공개 채널과 ";
-	sysMsg += std::to_string(my_packet->CustomChannelCount);
+	sysMsg += std::to_string(packet.customChannelCount);
 	sysMsg += " 개의 커스텀 채널이 존재합니다.";
 	::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
 
-	auto publicNames = SplitString(my_packet->PublicChannelNames, NAME_DELIMITER);
-	unsigned int num = 1;
-	for (int i = 0; i < my_packet->PublicChannelCount; ++i)
+	for (size_t i = 0; i < publicChannelCount; ++i)
 	{
 		std::string strNames;
-		strNames += std::to_string(num++);
-		strNames += ". " + publicNames[i];
+		strNames += std::to_string(i + 1);
+		strNames += ". " + packet.publicChannelNames[i];
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(strNames.c_str()));
 	}
 
 	SeekLastAddedCursor(listLog);
 }
 
-void Framework::ProcessChannelEnter(unsigned char* packet)
+void Framework::Process_ChannelEnter(StreamReader& in)
 { 
-	packet_channel_enter* my_packet = reinterpret_cast<packet_channel_enter*>(packet);
-	currentChannelMaster = my_packet->ChannelMaster;
-	::SetWindowText(editChannelName, my_packet->ChannelName);
-	userChannel = my_packet->ChannelName;
+	Packet_Channel_Enter packet;
+	packet.Deserialize(in);
 
+	currentChannelMaster = packet.channelMaster;
+	userChannel = packet.channelName;
+
+	::SetWindowText(editChannelName, userChannel.c_str());
 	::SendMessage(listUsers, LB_RESETCONTENT, 0, 0);
 	
 	std::string sysMsg("***System*** ");
-	sysMsg += my_packet->ChannelName;
+	sysMsg += packet.channelName;
 	sysMsg += " 에 들어왔습니다.";
 	::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
 	SeekLastAddedCursor(listLog);
 }
 
-void Framework::ProcessChannelUsers(unsigned char* packet)
+void Framework::Process_ChannelUsers(StreamReader& in)
 {
-	packet_channel_users* my_packet = reinterpret_cast<packet_channel_users*>(packet);
-	if (my_packet->UserCountInPacket == 0)
+	Packet_Channel_Users packet;
+	packet.Deserialize(in);
+
+	size_t userCount = packet.userNames.size();
+	if (userCount == 0)
 		return;
 
-	auto usersInChannel = SplitString(my_packet->UserNames, NAME_DELIMITER);
-	for (int i = 0; i < my_packet->UserCountInPacket; ++i)
+	for (size_t i = 0; i < userCount; ++i)
 	{
-		std::string name = usersInChannel[i];
-		if (usersInChannel[i] == currentChannelMaster)
+		std::string name = packet.userNames[i];
+		if (packet.userNames[i] == currentChannelMaster)
 			name += "★";
-		if (usersInChannel[i] == userName)
+		if (packet.userNames[i] == userName)
 			name += " (You)";
 
 		::SendMessage(listUsers, LB_ADDSTRING, 0, (LPARAM)name.c_str());
@@ -418,28 +415,31 @@ void Framework::ProcessChannelUsers(unsigned char* packet)
 	SeekLastAddedCursor(listUsers);
 }
 
-void Framework::ProcessNewfaceEnter(unsigned char* packet)
+void Framework::Process_NewfaceEnter(StreamReader& in)
 {
-	packet_newface_enter* my_packet = reinterpret_cast<packet_newface_enter*>(packet);
-	if(my_packet->User != userName)
-		::SendMessage(listUsers, LB_ADDSTRING, 0, LPARAM(my_packet->User));
+	Packet_Newface_Enter packet;
+	packet.Deserialize(in);
+
+	if(packet.userName != userName)
+		::SendMessage(listUsers, LB_ADDSTRING, 0, LPARAM(packet.userName.c_str()));
 }
 
-void Framework::ProcessUserLeave(unsigned char* packet)
+void Framework::Process_UserLeave(StreamReader& in)
 {
-	packet_user_leave* my_packet = reinterpret_cast<packet_user_leave*>(packet);
-	
+	Packet_User_Leave packet;
+	packet.Deserialize(in);
+
 	std::string sysMsg("***System*** ");
-	if (my_packet->IsKicked)
+	if (packet.isKicked)
 	{
-		sysMsg += my_packet->User + std::string(" 님이 강퇴당했습니다.");
+		sysMsg += packet.userName + std::string(" 님이 강퇴당했습니다.");
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
 		SeekLastAddedCursor(listLog);
 	}
 
-	int slot = ::SendMessage(listUsers, LB_FINDSTRINGEXACT, 0, LPARAM(my_packet->User));
+	int slot = ::SendMessage(listUsers, LB_FINDSTRINGEXACT, 0, LPARAM(packet.userName.c_str()));
 	if(slot == LB_ERR)
-		slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(my_packet->User));
+		slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(packet.userName.c_str()));
 
 	if (slot != LB_ERR)
 		::SendMessage(listUsers, LB_DELETESTRING, WPARAM(slot), 0);
@@ -451,34 +451,37 @@ void Framework::ProcessUserLeave(unsigned char* packet)
 	}
 }
 
-void Framework::ProcessChatting(unsigned char* packet)
+void Framework::Process_Chatting(StreamReader& in)
 {
-	packet_chatting* my_packet = reinterpret_cast<packet_chatting*>(packet);
-	
+	Packet_Chatting packet;
+	packet.Deserialize(in);
+
 	std::string chatMsg;
-	if (my_packet->IsWhisper == true)
+	if (packet.isWhisper)
 	{
-		if (my_packet->Talker == userName)
-			chatMsg += (std::string(my_packet->Listner) + " 님에게 : ");
+		if (packet.talker == userName)
+			chatMsg += (std::string(packet.listener) + " 님에게 : ");
 		else
-			chatMsg += (std::string(my_packet->Talker) + " 님의 귓속말 : ");
+			chatMsg += (std::string(packet.talker) + " 님의 귓속말 : ");
 	}
 	else
-		chatMsg += std::string(my_packet->Talker) + " : ";
+		chatMsg += std::string(packet.talker) + " : ";
 
-	chatMsg += my_packet->Chat;
+	chatMsg += packet.chat;
 	::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(chatMsg.c_str()));
 	SeekLastAddedCursor(listLog);
 }
 
-void Framework::ProcessNewMaster(unsigned char* packet)
+void Framework::Process_NewMaster(StreamReader& in)
 {
-	packet_new_master* my_packet = reinterpret_cast<packet_new_master*>(packet);
-	if (my_packet->Channel != userChannel)
+	Packet_New_Master packet;
+	packet.Deserialize(in);
+
+	if (packet.channelName != userChannel)
 		return;
 
-	currentChannelMaster = my_packet->Master;
-	int slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(my_packet->Master));
+	currentChannelMaster = packet.master;
+	int slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(packet.master.c_str()));
 
 	if (slot != -1)
 	{
@@ -508,7 +511,7 @@ void Framework::RequestLogin(const std::string& id)
 		return;
 	}
 
-	if (id.size() > MAX_USERNAME_LENGTH)
+	if (id.size() > Packet_Base::MAX_USERNAME_SIZE)
 	{
 		::MessageBox(mainWindow, "너무 긴 이름입니다.", "생성 불가", MB_OK);
 		return;
@@ -520,14 +523,14 @@ void Framework::RequestLogin(const std::string& id)
 		return;
 	}
 
-	packet_login* my_packet = reinterpret_cast<packet_login *>(userSocket.GetSendWsaBuf().buf);
-	::ZeroMemory(my_packet, sizeof(packet_login));
-	my_packet->Size = sizeof(packet_login);
-	my_packet->Type = PACKET_LOGIN;
-	my_packet->Created = false;
-	std::memcpy(&(my_packet->User), id.c_str(), id.size());
+	Packet_Login loginPacket;
+	loginPacket.isCreated = false;
+	loginPacket.userName = id;
 
-	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	StreamWriter stream(userSocket.GetSendWsaBuf().buf, Packet_Base::MAX_BUF_SIZE);
+	loginPacket.Serialize(stream);
+
+	userSocket.SendPacket(stream.GetBuffer());
 }
 
 void Framework::RequestWhisper(const std::string& listener, const std::string& chat)
@@ -539,27 +542,29 @@ void Framework::RequestWhisper(const std::string& listener, const std::string& c
 		return;
 	}
 
-	packet_chatting* my_packet = reinterpret_cast<packet_chatting *>(userSocket.GetSendWsaBuf().buf);
-	::ZeroMemory(my_packet, sizeof(packet_chatting));
-	my_packet->Size = sizeof(packet_chatting);
-	my_packet->Type = PACKET_CHATTING;
-	my_packet->IsWhisper = true;
+	Packet_Chatting chatPacket;
+	chatPacket.isWhisper = true;
+	chatPacket.talker = userName;
+	chatPacket.listener = listener;
+	chatPacket.chat = chat;
 
-	std::memcpy(&(my_packet->Talker), userName.c_str(), userName.size());
-	std::memcpy(&(my_packet->Listner), listener.c_str(), listener.size());
-	std::memcpy(&(my_packet->Chat), chat.c_str(), chat.size());
+	StreamWriter stream(userSocket.GetSendWsaBuf().buf, Packet_Base::MAX_BUF_SIZE);
+	chatPacket.Serialize(stream);
 
-	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	userSocket.SendPacket(stream.GetBuffer());
 }
 
 void Framework::RequestChannelList()
 {
-	//client to server - Size, Type만 전송
-	packet_channel_list* my_packet = reinterpret_cast<packet_channel_list *>(userSocket.GetSendWsaBuf().buf);
-	my_packet->Size = sizeof(my_packet->Size) + sizeof(my_packet->Type);
-	my_packet->Type = PACKET_CHANNEL_LIST;
+	//client to server - 리스트를 요청하므로 따로 데이터를 담지 않음
+	Packet_Channel_List channelListPacket;
+	channelListPacket.customChannelCount = 0;
+	channelListPacket.publicChannelNames.clear();
 
-	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	StreamWriter stream(userSocket.GetSendWsaBuf().buf, Packet_Base::MAX_BUF_SIZE);
+	channelListPacket.Serialize(stream);
+
+	userSocket.SendPacket(stream.GetBuffer());
 }
 
 void Framework::RequestChannelChange(const std::string& channelName)
@@ -571,14 +576,15 @@ void Framework::RequestChannelChange(const std::string& channelName)
 		return;
 	}
 
-	//client to server - 채널이름만 초기화
-	packet_channel_enter* my_packet = reinterpret_cast<packet_channel_enter *>(userSocket.GetSendWsaBuf().buf);
-	::ZeroMemory(my_packet, sizeof(packet_channel_enter));
-	my_packet->Size = sizeof(packet_channel_enter);
-	my_packet->Type = PACKET_CHANNEL_ENTER;
-	std::memcpy(&(my_packet->ChannelName), channelName.c_str(), channelName.size());
+	//client to server - 들어가고자하는 채널이름만 초기화
+	Packet_Channel_Enter enterPacket;
+	enterPacket.channelName = channelName;
+	enterPacket.channelMaster.clear();
 
-	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	StreamWriter stream(userSocket.GetSendWsaBuf().buf, Packet_Base::MAX_BUF_SIZE);
+	enterPacket.Serialize(stream);
+
+	userSocket.SendPacket(stream.GetBuffer());
 }
 
 void Framework::RequestKick(const std::string& target)
@@ -596,27 +602,27 @@ void Framework::RequestKick(const std::string& target)
 		return;
 	}
 
-	packet_kick_user* my_packet = reinterpret_cast<packet_kick_user *>(userSocket.GetSendWsaBuf().buf);
-	::ZeroMemory(my_packet, sizeof(packet_kick_user));
-	my_packet->Size = sizeof(packet_kick_user);
-	my_packet->Type = PACKET_KICK_USER;
-	std::memcpy(&(my_packet->Target), target.c_str(), target.size());
-	std::memcpy(&(my_packet->Kicker), userName.c_str(), userName.size());
-	std::memcpy(&(my_packet->Channel), userChannel.c_str(), userChannel.size());
+	Packet_Kick_User kickPacket;
+	kickPacket.kicker = userName;
+	kickPacket.target = target;
+	kickPacket.channelName = userChannel;
 
-	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	StreamWriter stream(userSocket.GetSendWsaBuf().buf, Packet_Base::MAX_BUF_SIZE);
+	kickPacket.Serialize(stream);
+
+	userSocket.SendPacket(stream.GetBuffer());
 }
 
 void Framework::RequestChatting(const std::string& chat)
 {
-	packet_chatting* my_packet = reinterpret_cast<packet_chatting*>(userSocket.GetSendWsaBuf().buf);
-	::ZeroMemory(my_packet, sizeof(packet_chatting));
-	my_packet->Size = sizeof(packet_chatting);
-	my_packet->Type = PACKET_CHATTING;
-	my_packet->IsWhisper = false;
+	Packet_Chatting chatPacket;
+	chatPacket.isWhisper = false;
+	chatPacket.listener.clear();	//전체채팅이므로
+	chatPacket.talker = userName;
+	chatPacket.chat = chat;
 
-	std::memcpy(&(my_packet->Talker), userName.c_str(), userName.size());
-	std::memcpy(&(my_packet->Chat), chat.c_str(), chat.size());
+	StreamWriter stream(userSocket.GetSendWsaBuf().buf, Packet_Base::MAX_BUF_SIZE);
+	chatPacket.Serialize(stream);
 
-	userSocket.SendPacket(reinterpret_cast<unsigned char*>(my_packet));
+	userSocket.SendPacket(stream.GetBuffer());
 }

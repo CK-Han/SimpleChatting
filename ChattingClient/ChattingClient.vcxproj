@@ -142,12 +142,16 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\Common\protocol.cpp" />
+    <ClCompile Include="..\Common\stream.cpp" />
     <ClCompile Include="Framework.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Socket.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\Common\Protocol.h" />
+    <ClInclude Include="..\Common\Before_Protocol.h" />
+    <ClInclude Include="..\Common\protocol.h" />
+    <ClInclude Include="..\Common\stream.h" />
     <ClInclude Include="Framework.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="Socket.h" />

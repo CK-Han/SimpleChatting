@@ -3,11 +3,14 @@
 #include <string>
 #include <list>
 #include <vector>
+#include <map>
 #include "../Common/Protocol.h"
 
 class Framework
 {
 private:
+	using Packet_Procedure = void (Framework::*)(StreamReader&);
+
 	static constexpr unsigned int		BLANK = 10;
 	static constexpr unsigned int		CHAT_HEIGHT = 25;
 	static constexpr float				CHAT_WIDTH_RATIO = 0.70f;
@@ -32,11 +35,11 @@ public:
 		return &framework;
 	}
 
-	bool Initialize(HWND hWnd, HINSTANCE instance);
+	bool Run(HWND hWnd, HINSTANCE instance);
 	
 	void ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam);
 	void ProcessInput();
-	void ProcessPacket(unsigned char* packet);
+	void ProcessPacket(const unsigned char* packet, int size);
 
 	WNDPROC GetOldInputProc() const { return oldInputProc; }
 	HWND	GetEditInput() const { return editInput; }
@@ -50,15 +53,15 @@ private:
 	bool		IsValidUserName(const std::string& id) const;
 	void		SeekLastAddedCursor(HWND listBox);
 
-	void ProcessSystemMessage(unsigned char* packet);
-	void ProcessLogin(unsigned char* packet);
-	void ProcessChannelList(unsigned char* packet);
-	void ProcessChannelEnter(unsigned char* packet);
-	void ProcessChannelUsers(unsigned char* packet);
-	void ProcessNewfaceEnter(unsigned char* packet);
-	void ProcessUserLeave(unsigned char* packet);
-	void ProcessChatting(unsigned char* packet);
-	void ProcessNewMaster(unsigned char* packet);
+	void Process_SystemMessage(StreamReader&);
+	void Process_Login(StreamReader&);
+	void Process_ChannelList(StreamReader&);
+	void Process_ChannelEnter(StreamReader&);
+	void Process_ChannelUsers(StreamReader&);
+	void Process_NewfaceEnter(StreamReader&);
+	void Process_UserLeave(StreamReader&);
+	void Process_Chatting(StreamReader&);
+	void Process_NewMaster(StreamReader&);
 
 	void RequestLogin(const std::string& id);
 	void RequestWhisper(const std::string& listener, const std::string& chat);
@@ -70,7 +73,7 @@ private:
 private:
 	unsigned int		clientWidth;
 	unsigned int		clientHeight;
-	bool				isInitialized;
+	bool				isRunning;
 	bool				isLogin;
 
 	HWND				mainWindow;
@@ -88,4 +91,6 @@ private:
 	std::string			userName;
 	std::string			userChannel;
 	std::string			currentChannelMaster;
+
+	std::map<Packet_Base::ValueType /*type*/, Packet_Procedure> procedures;
 };
