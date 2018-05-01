@@ -66,6 +66,9 @@ public:
 	void		Process_Kick(SERIAL_TYPE serial, StreamReader&);
 	void		Process_ChannelChange(SERIAL_TYPE serial, StreamReader&);
 
+	//Debug
+	std::vector<std::string>	DebugCustomChannels(bool doLock);
+	int							DebugUserCount(bool doLock);
 
 private:
 	Framework();
@@ -76,9 +79,9 @@ private:
 
 	SERIAL_TYPE				GetRandomPublicChannelSerial() const;
 	SERIAL_TYPE				GetSerialForNewCustomChannel();
-	void					BroadcastToChannel(std::shared_ptr<Channel>& channel, const void* packet) const;
+	void					BroadcastToChannel(const std::shared_ptr<Channel>& channel, const void* packet) const;
 
-	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel);
+	void					HandleUserLeave(SERIAL_TYPE leaver, bool isKicked, const std::shared_ptr<Channel>& channel);
 	void					ConnectToRandomPublicChannel(SERIAL_TYPE serial);
 	CHANNEL_CONNECT			ConnectToChannel(SERIAL_TYPE serial, const std::string& channelName);
 	

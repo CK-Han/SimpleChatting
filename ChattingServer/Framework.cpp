@@ -279,6 +279,7 @@ void Framework::Process_Chatting(Framework::SERIAL_TYPE serial, StreamReader& in
 	if (chatPacket.isWhisper == false)
 	{
 		std::unique_lock<std::mutex> ulChannel(channel->GetChannelLock());
+		//수정
 		BroadcastToChannel(channel, in.GetBuffer());
 	}
 	else
@@ -339,7 +340,7 @@ void Framework::Process_ChannelChange(Framework::SERIAL_TYPE serial, StreamReade
 {
 	if (IsValidClientSerial(serial) == false) return;
 
-	auto& client =GetClient(serial);
+	auto& client = GetClient(serial);
 	if (client.IsLogin == false) return;
 
 	Packet_Channel_Enter enterPacket;
@@ -426,7 +427,7 @@ Framework::SERIAL_TYPE Framework::GetSerialForNewCustomChannel()
 	return customSerial;
 }
 
-void Framework::BroadcastToChannel(std::shared_ptr<Channel>& channel, const void* packet) const
+void Framework::BroadcastToChannel(const std::shared_ptr<Channel>& channel, const void* packet) const
 {
 	if (channel == nullptr || packet == nullptr) return;
 
@@ -434,7 +435,7 @@ void Framework::BroadcastToChannel(std::shared_ptr<Channel>& channel, const void
 		SendPacket(client->Serial, packet);
 }
 
-void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, std::shared_ptr<Channel>& channel)
+void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, const std::shared_ptr<Channel>& channel)
 {
 	if (IsValidClientSerial(leaver) == false) return;
 
@@ -479,8 +480,8 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 	leavePacket.Serialize(leaveStream);
 
 	if (isKicked)
-		SendSystemMessage(leaver, "***System*** 방장에 의해 강퇴당하였습니다. 공개채널로 이동합니다.");
-
+		SendPacket(leaver, leaveStream.GetBuffer());
+		
 	BroadcastToChannel(channel, leaveStream.GetBuffer());
 
 	if (isMasterChanged)
@@ -498,13 +499,18 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, st
 
 void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 {
+	if (IsValidClientSerial(serial) == false
+		|| clients[serial]->IsLogin == false)
+		return;
+
 	CHANNEL_CONNECT isConnected = CHANNEL_CONNECT::FAIL_ARGUMENT;
 	while (isConnected != CHANNEL_CONNECT::SUCCESS)
 	{
 		Framework::SERIAL_TYPE randSlot = GetRandomPublicChannelSerial();
 		if (randSlot == SERIAL_ERROR)
-		{	//모든 공개채널이 가득 찬 상태로, 채널에 입장하지 못한 상태
+		{	//모든 공개채널이 혼잡한 상태로, 채널에 입장하지 못한 상태
 			//스타크래프트1 배틀넷의 Void 채널과 유사
+			clients[serial]->ChannelName.clear();
 			SendSystemMessage(serial, "***System*** 공개채널이 혼잡하여 연결하지 못했습니다.");
 			return;
 		}
@@ -645,6 +651,31 @@ void Framework::AddNewCustomChannel(const std::string& channelName)
 
 	usedCustomChannelNames.insert(std::make_pair(channelName, customSerial));
 	customChannels[customSerial]->InitializeChannel(channelName);
+}
+
+
+
+std::vector<std::string>	
+	Framework::DebugCustomChannels(bool doLock)
+{
+	std::unique_lock<std::mutex> ulCustom(customChannelsLock, std::defer_lock);
+	if (doLock) ulCustom.lock();
+
+	std::vector<std::string> customs;
+	customs.reserve(usedCustomChannelNames.size());
+
+	for (const auto& name : usedCustomChannelNames)
+		customs.push_back(name.first);
+
+	return customs;
+}
+
+int	Framework::DebugUserCount(bool doLock)
+{
+	std::unique_lock<std::mutex> ulUser(clientNameLock, std::defer_lock);
+	if (doLock) ulUser.lock();
+
+	return usedClientNames.size();
 }
 
 

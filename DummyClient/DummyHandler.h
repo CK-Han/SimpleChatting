@@ -101,6 +101,7 @@ private:
 
 	void			Process_Login(int serial, StreamReader&);
 	void			Process_ChannelEnter(int serial, StreamReader&);
+	void			Process_UserLeave(int serial, StreamReader&);
 
 	void			AddRandomPacketEvent(int serial);
 	

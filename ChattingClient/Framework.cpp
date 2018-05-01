@@ -432,7 +432,15 @@ void Framework::Process_UserLeave(StreamReader& in)
 	std::string sysMsg("***System*** ");
 	if (packet.isKicked)
 	{
-		sysMsg += packet.userName + std::string(" 님이 강퇴당했습니다.");
+		if (packet.userName == userName)
+		{
+			sysMsg += " 방장에 의해 강퇴당했습니다.";
+			userChannel.clear(); //void 채널
+			::SendMessage(listUsers, LB_RESETCONTENT, 0, 0);
+		}
+		else
+			sysMsg += packet.userName + std::string(" 님이 강퇴당했습니다.");
+		
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
 		SeekLastAddedCursor(listLog);
 	}
@@ -615,6 +623,13 @@ void Framework::RequestKick(const std::string& target)
 
 void Framework::RequestChatting(const std::string& chat)
 {
+	if (userChannel.empty())
+	{
+		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM("***System*** 채널에 연결되지 않았습니다!"));
+		SeekLastAddedCursor(listLog);
+		return;
+	}
+
 	Packet_Chatting chatPacket;
 	chatPacket.isWhisper = false;
 	chatPacket.listener.clear();	//전체채팅이므로

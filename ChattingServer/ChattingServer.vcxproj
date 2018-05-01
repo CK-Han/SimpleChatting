@@ -149,7 +149,6 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\Common\Before_Protocol.h" />
     <ClInclude Include="..\Common\protocol.h" />
     <ClInclude Include="..\Common\stream.h" />
     <ClInclude Include="Channel.h" />

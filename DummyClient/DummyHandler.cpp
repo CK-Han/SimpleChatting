@@ -86,7 +86,8 @@ bool DummyHandler::Start(const std::string& ip)
 
 	packetProcedures.insert(std::make_pair(Packet_Login::typeAdder.GetType(), &DummyHandler::Process_Login));
 	packetProcedures.insert(std::make_pair(Packet_Channel_Enter::typeAdder.GetType(), &DummyHandler::Process_ChannelEnter));
-
+	packetProcedures.insert(std::make_pair(Packet_User_Leave::typeAdder.GetType(), &DummyHandler::Process_UserLeave));
+	
 	try
 	{
 		for (auto i = 0; i < NUM_WORKER_THREADS; ++i)
@@ -270,6 +271,21 @@ void DummyHandler::Process_ChannelEnter(int serial, StreamReader& in)
 	dummies[serial].first.userChannel = enterPacket.channelName;
 }
 
+void DummyHandler::Process_UserLeave(int serial, StreamReader& in)
+{
+	if (IsValidSerial(serial) == false)	return;
+
+	Packet_User_Leave leavePacket;
+	leavePacket.Deserialize(in);
+	
+	if (leavePacket.isKicked == true
+		|| leavePacket.userName == dummies[serial].first.userName)
+	{
+		std::unique_lock<std::mutex> ulDummy(dummies[serial].first.GetLock());
+		dummies[serial].first.userChannel.clear(); //void 채널
+	}
+}
+
 ////////////////////////////////////////////////////////////////////////////
 //Request
 void DummyHandler::SendRandomPacket(int serial)
@@ -408,6 +424,8 @@ void DummyHandler::RequestChatting(int serial)
 {
 	if (IsValidSerial(serial) == false
 		|| dummies[serial].first.isLogin == false) return;
+
+	if (dummies[serial].first.userChannel.empty()) return;	//void 채널 상태
 
 	Dummy& dummy = dummies[serial].first;
 	std::string chat("This is test! ID : " + std::to_string(serial));

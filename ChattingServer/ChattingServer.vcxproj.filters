@@ -44,9 +44,6 @@
     <ClInclude Include="Client.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\Common\Before_Protocol.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="..\Common\protocol.h">
       <Filter>Common</Filter>
     </ClInclude>
