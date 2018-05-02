@@ -1,5 +1,6 @@
 #include "Framework.h"
 #include <iostream>
+#include <iomanip>
 using namespace std;
 
 void main()
@@ -28,16 +29,24 @@ void main()
 		{
 			auto vec = Framework::GetInstance().DebugCustomChannels(false);
 			cout << "custom channel list... " << endl;
+			int newLineCheck = 0;
 			for (const auto& name : vec)
 			{
-				cout << name << '\t' << '\t';
+				cout << std::setw(Packet_Base::MAX_CHANNELNAME_SIZE + 2) << name;
+				++newLineCheck;
+				if (newLineCheck == 3)
+				{
+					newLineCheck = 0;
+					cout << endl;
+				}
 			}
 
-			cout << "..................................\n";
+			cout << "\n..................................\n\n";
 			cout << comandExplain;
 		}
 			break;
-		}
+
+		} //switch end
 	}
 	
 	cout << "server ended\n";

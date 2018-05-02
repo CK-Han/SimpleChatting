@@ -107,13 +107,13 @@ void CustomChannel::InitializeChannel(const std::string& chName)
 {
 	clientsInChannel.clear();
 	isCreated = true;
-	SetChannelName(chName);
+	channelName = chName;
 }
 
 void CustomChannel::CloseChannel()
 {
 	clientsInChannel.clear();
 	isCreated = false;
-	SetChannelMaster("");
-	SetChannelName("");
+	channelMaster.clear();
+	channelName.clear();
 }

@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <numeric>
 #include <random>
-#pragma comment (lib, "ws2_32.lib")
+#include <fstream>
 
 namespace
 {
@@ -41,24 +41,21 @@ void Framework::Initialize()
 	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
 		validCustomChannelSerials.push(i);
 
-	//protocol의 MAX_PUBLIC_CHANNEL_COUNT 고려
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("FreeChannel"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("ForTeenagers"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("For20s"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("For3040s"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutGame"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutStudy"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutHobby"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("AboutExcercise"));
+	//공개채널 리스트 파일 읽기
+	std::ifstream publicChannelFile("../Common/PublicChannel.txt");
+	if (publicChannelFile.is_open() == false)
+	{
+		std::cout << "cannot open public Channel list file\n";
+		return;
+	}
 
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample1"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample2"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample3"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample4"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample5"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample6"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample7"));
-	publicChannels.emplace_back(std::make_shared<PublicChannel>("Sample8"));
+	std::string token;
+	while (std::getline(publicChannelFile, token))
+	{
+		if (token.empty() == false)
+			publicChannels.emplace_back(std::make_shared<PublicChannel>(token));
+	}
+	publicChannelFile.close();
 
 	customChannels.reserve(MAX_CUSTOM_COUNT);
 	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
@@ -186,7 +183,6 @@ void Framework::ProcessUserClose(Framework::SERIAL_TYPE serial)
 
 	std::unique_lock<std::mutex> ulName(clientNameLock);
 	usedClientNames.erase(client.UserName);
-	ulName.unlock();
 
 	client.IsLogin = false;
 	client.UserName.clear();
@@ -248,7 +244,7 @@ void Framework::Process_ChannelList(Framework::SERIAL_TYPE serial, StreamReader&
 	}
 
 	//커스텀채널의 개수 확인시 lock을 하는것이 정확한 결과이나
-	//이름까지 확인하지 않고 어느정도의 커스텀채널이 있는지 확인하는 것이므로, lock을 하지 않는다.
+	//이름을 확인하지 않고 어느정도의 커스텀채널이 있는지 확인하는 것이므로, lock을 하지 않는다.
 	channelListPacket.customChannelCount = 0;
 	for (auto& customChannel : customChannels)
 	{
@@ -279,7 +275,6 @@ void Framework::Process_Chatting(Framework::SERIAL_TYPE serial, StreamReader& in
 	if (chatPacket.isWhisper == false)
 	{
 		std::unique_lock<std::mutex> ulChannel(channel->GetChannelLock());
-		//수정
 		BroadcastToChannel(channel, in.GetBuffer());
 	}
 	else
@@ -346,7 +341,8 @@ void Framework::Process_ChannelChange(Framework::SERIAL_TYPE serial, StreamReade
 	Packet_Channel_Enter enterPacket;
 	enterPacket.Deserialize(in);
 
-	if (enterPacket.channelName == client.ChannelName) return;
+	if (enterPacket.channelName == client.ChannelName
+		|| enterPacket.channelName.empty()) return;
 
 	CHANNEL_CONNECT isChannelChanged = CHANNEL_CONNECT::FAIL_ARGUMENT;
 	auto channel = FindChannelFromName(enterPacket.channelName);
@@ -695,7 +691,7 @@ namespace
 		listenAddr.sin_port = htons(Packet_Base::PORT_NUMBER);
 
 		::bind(acceptSocket, reinterpret_cast<sockaddr *>(&listenAddr), sizeof(listenAddr));
-		::listen(acceptSocket, 10);
+		::listen(acceptSocket, 100);
 
 		FD_SET acceptSet;
 		timeval timeVal;
@@ -739,7 +735,7 @@ namespace
 				continue;
 			}
 
-			//새 클라이언트 생성, 자료구조에 등록
+			//새 클라이언트 초기화, 등록
 			Client& client = framework.GetClient(newSerial);
 
 			client.Serial = newSerial;

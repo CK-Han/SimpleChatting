@@ -47,25 +47,19 @@ public:
 		return framework;
 	}
 
-	bool						IsShutDown() const { return isShutDown; }
-	bool						IsValidClientSerial(SERIAL_TYPE serial) const { return (0 <= serial && serial < MAX_CLIENT_COUNT) ? true : false; }
+	bool			IsShutDown() const { return isShutDown; }
+	bool			IsValidClientSerial(SERIAL_TYPE serial) const { return (0 <= serial && serial < MAX_CLIENT_COUNT) ? true : false; }
 
-	HANDLE						GetIocpHandle() const { return hIocp; }
-	Client&						GetClient(SERIAL_TYPE serial) { return *clients[serial]; }
-	SERIAL_TYPE					GetSerialForNewClient();
+	HANDLE			GetIocpHandle() const { return hIocp; }
+	Client&			GetClient(SERIAL_TYPE serial) { return *clients[serial]; }
+	SERIAL_TYPE		GetSerialForNewClient();
 
-	void		SendPacket(SERIAL_TYPE serial, const void* packet) const;
-	void		SendSystemMessage(SERIAL_TYPE serial, const std::string& msg) const;
+	void			SendPacket(SERIAL_TYPE serial, const void* packet) const;
+	void			SendSystemMessage(SERIAL_TYPE serial, const std::string& msg) const;
 	
-	void		ProcessUserClose(SERIAL_TYPE serial);	//disconnect
-	void		ProcessPacket(SERIAL_TYPE serial, unsigned char* packet, int size);
+	void			ProcessUserClose(SERIAL_TYPE serial);	//disconnect
+	void			ProcessPacket(SERIAL_TYPE serial, unsigned char* packet, int size);
 	
-	void		Process_Login(SERIAL_TYPE serial, StreamReader&);
-	void		Process_ChannelList(SERIAL_TYPE serial, StreamReader&);
-	void		Process_Chatting(SERIAL_TYPE serial, StreamReader&);
-	void		Process_Kick(SERIAL_TYPE serial, StreamReader&);
-	void		Process_ChannelChange(SERIAL_TYPE serial, StreamReader&);
-
 	//Debug
 	std::vector<std::string>	DebugCustomChannels(bool doLock);
 	int							DebugUserCount(bool doLock);
@@ -76,6 +70,12 @@ private:
 
 	void Initialize();
 	void ShutDown();
+
+	void Process_Login(SERIAL_TYPE serial, StreamReader&);
+	void Process_ChannelList(SERIAL_TYPE serial, StreamReader&);
+	void Process_Chatting(SERIAL_TYPE serial, StreamReader&);
+	void Process_Kick(SERIAL_TYPE serial, StreamReader&);
+	void Process_ChannelChange(SERIAL_TYPE serial, StreamReader&);
 
 	SERIAL_TYPE				GetRandomPublicChannelSerial() const;
 	SERIAL_TYPE				GetSerialForNewCustomChannel();
