@@ -78,7 +78,7 @@ void StreamWriter::OverwriteRawData(SizeType begin, const void* src, SizeType si
 	if (src == nullptr)
 		throw InvalidStreamArgument();
 
-	if (maxsize <= (begin + size))
+	if (maxsize < (begin + size))
 		throw StreamWriteOverflow();
 
 	std::memcpy(buffer + begin, src, size);

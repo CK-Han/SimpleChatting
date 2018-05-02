@@ -34,7 +34,7 @@ Packet_Base::ValueType Packet_Base::RegisterType(const StringType& packetName)
 	return type;
 }
 
-TypeAdder::TypeAdder(const Packet_Base::StringType& packetName)
+Packet_Base::TypeAdder::TypeAdder(const Packet_Base::StringType& packetName)
 	: type(Packet_Base::RegisterType(packetName))
 {
 }
@@ -64,8 +64,6 @@ Packet_Base::ValueType GetPacketType(const void* buf)
 
 
 /////////Protected Functions////////////
-
-
 void Packet_Base::SerializeBegin(StreamWriter& out, ValueType type) const
 {
 	out << ValueType(0) << type;	//Size is garbage value now
@@ -120,7 +118,6 @@ void Packet_Base::DeserializeString(StreamReader& in, StringType& str)
 
 	str = StringType(buffer, msgSize);
 }
-
 /////////Protected Functions////////////
 
 
@@ -128,7 +125,7 @@ void Packet_Base::DeserializeString(StreamReader& in, StringType& str)
 ///////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////BEGIN///////////////////////////////////////////////////////////
 
-const TypeAdder Packet_System::typeAdder("Packet_System");
+const Packet_Base::TypeAdder Packet_System::typeAdder("Packet_System");
 void Packet_System::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -149,7 +146,7 @@ void Packet_System::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_Login::typeAdder("Packet_Login");
+const Packet_Base::TypeAdder Packet_Login::typeAdder("Packet_Login");
 void Packet_Login::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -172,7 +169,7 @@ void Packet_Login::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_Channel_List::typeAdder("Packet_Channel_List");
+const Packet_Base::TypeAdder Packet_Channel_List::typeAdder("Packet_Channel_List");
 void Packet_Channel_List::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -210,7 +207,7 @@ void Packet_Channel_List::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_Channel_Enter::typeAdder("Packet_Channel_Enter");
+const Packet_Base::TypeAdder Packet_Channel_Enter::typeAdder("Packet_Channel_Enter");
 void Packet_Channel_Enter::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -233,7 +230,7 @@ void Packet_Channel_Enter::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_Channel_Users::typeAdder("Packet_Channel_Users");
+const Packet_Base::TypeAdder Packet_Channel_Users::typeAdder("Packet_Channel_Users");
 void Packet_Channel_Users::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -273,7 +270,7 @@ void Packet_Channel_Users::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_Newface_Enter::typeAdder("Packet_Newface_Enter");
+const Packet_Base::TypeAdder Packet_Newface_Enter::typeAdder("Packet_Newface_Enter");
 void Packet_Newface_Enter::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -294,7 +291,7 @@ void Packet_Newface_Enter::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_User_Leave::typeAdder("Packet_User_Leave");
+const Packet_Base::TypeAdder Packet_User_Leave::typeAdder("Packet_User_Leave");
 void Packet_User_Leave::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -317,7 +314,7 @@ void Packet_User_Leave::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_Kick_User::typeAdder("Packet_Kick_User");
+const Packet_Base::TypeAdder Packet_Kick_User::typeAdder("Packet_Kick_User");
 void Packet_Kick_User::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -342,7 +339,7 @@ void Packet_Kick_User::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_Chatting::typeAdder("Packet_Chatting");
+const Packet_Base::TypeAdder Packet_Chatting::typeAdder("Packet_Chatting");
 void Packet_Chatting::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());
@@ -369,7 +366,7 @@ void Packet_Chatting::Deserialize(StreamReader& in)
 
 
 /////////////////////////////////////////////////////
-const TypeAdder Packet_New_Master::typeAdder("Packet_New_Master");
+const Packet_Base::TypeAdder Packet_New_Master::typeAdder("Packet_New_Master");
 void Packet_New_Master::Serialize(StreamWriter& out) const
 {
 	SerializeBegin(out, typeAdder.GetType());

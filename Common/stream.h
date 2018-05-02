@@ -1,36 +1,31 @@
 #pragma once
+#include <stdexcept>
 
-#include <vector>
-#include <string>
-#include <exception>
 
-class InvalidStreamArgument
-	: public std::invalid_argument
+class StreamBase
 {
 public:
-	InvalidStreamArgument() : std::invalid_argument("InvalidStreamArgument") {}
+	using SizeType = unsigned int;
+
+	class InvalidStreamArgument
+		: public std::invalid_argument
+	{
+	public:
+		InvalidStreamArgument() : std::invalid_argument("InvalidStreamArgument") {}
+	};
 };
-
-class StreamWriteOverflow
-	: public std::overflow_error
-{
-public:
-	StreamWriteOverflow() : std::overflow_error("StreamWriteOverflow") {}
-};
-
-class StreamReadUnderflow
-	: public std::underflow_error
-{
-public:
-	StreamReadUnderflow() : std::underflow_error("StreamReadUnderflow") {}
-};
-
-
 
 
 class StreamWriter
+	: public StreamBase
 {
-	using SizeType = unsigned int;
+public:
+	class StreamWriteOverflow
+		: public std::overflow_error
+	{
+	public:
+		StreamWriteOverflow() : std::overflow_error("StreamWriteOverflow") {}
+	};
 
 public:
 	StreamWriter(void* buf, SizeType maxsize);
@@ -67,8 +62,15 @@ private:
 
 
 class StreamReader
+	: public StreamBase
 {
-	using SizeType = unsigned int;
+public:
+	class StreamReadUnderflow
+		: public std::underflow_error
+	{
+	public:
+		StreamReadUnderflow() : std::underflow_error("StreamReadUnderflow") {}
+	};
 
 public:
 	StreamReader(const void* buf, SizeType maxsize);

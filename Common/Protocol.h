@@ -26,9 +26,22 @@ public:
 	using StringType = std::string;
 	using HashType = std::hash<StringType>;
 
+protected:
+	class TypeAdder
+	{
+	public:
+		TypeAdder(const StringType& packetName);
+		ValueType GetType() const { return type; }
+
+	private:
+		const ValueType type;
+	};
+
+
 public:
 	virtual void Serialize(StreamWriter&) const = 0;
 	virtual void Deserialize(StreamReader&) = 0;
+
 
 protected:
 	void SerializeBegin(StreamWriter&, ValueType type) const;
@@ -40,15 +53,13 @@ protected:
 	void SerializeString(StreamWriter&, const StringType&, ValueType maxSize) const;
 	void DeserializeString(StreamReader&, StringType&);
 
-
-public:
-	static ValueType RegisterType(const StringType& packetName);
-
 private:
+	static ValueType RegisterType(const StringType& packetName);
+	
 	static std::map<ValueType, StringType> registeredTypes;
 
 
-	//상수 나열
+///////////////////상수 나열//////////////////////
 public:
 	static const unsigned short		PORT_NUMBER				 = 6000;
 	static const unsigned short		MAX_BUF_SIZE			 = 4096;
@@ -58,36 +69,10 @@ public:
 	static const unsigned short		MAX_CHANNELNAME_SIZE	 = 32;
 };
 
-
-class TypeAdder
-{
-public:
-	TypeAdder(const Packet_Base::StringType& packetName);
-	Packet_Base::ValueType GetType() const { return type; }
-
-private:
-	const Packet_Base::ValueType type;
-};
-
-
-
 Packet_Base::ValueType GetPacketSize(const void* buf);
 Packet_Base::ValueType GetPacketType(const void* buf);
 
 ///////////////////////////////////////////////////////////////////////////////////////
-
-//////////////////////
-//보완해볼만한 사항
-//Stream 클래스를 상속받아 PacketWriter, PacketReader 클래스를 여기에 정의해서
-//중복되는 코드들을 최대한 제거해보는 것이 아주 좋겠다.
-
-//순서 : 일단 cpp 작성 -> 테스트 -> 보완사항 진행 -> 테스트 ㅇㅋ?
-//필요한 함수
-//Serialize() - Begin, End, String 쓰기
-//Deserialize() - Begin, String 읽기
-//인자로 Stream이랑 길이 등을 받을듯
-//Begin(StreamWriter& out, Packet_Base::ValueType type) 뭐 이런식인데
-//////////////////////
 
 struct Packet_System
 	: public Packet_Base
