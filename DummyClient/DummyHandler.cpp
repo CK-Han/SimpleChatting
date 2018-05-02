@@ -1,7 +1,6 @@
 #include "DummyHandler.h"
-#pragma comment (lib, "ws2_32.lib")
 #include <iostream>
-
+#include <fstream>
 
 namespace
 {
@@ -23,25 +22,6 @@ DummyHandler::DummyHandler()
 {
 	WSADATA	wsadata;
 	::WSAStartup(MAKEWORD(2, 2), &wsadata);
-
-	//공개채널 리스트
-	publicChannels.emplace_back("FreeChannel");
-	publicChannels.emplace_back("ForTeenagers");
-	publicChannels.emplace_back("For20s");
-	publicChannels.emplace_back("For3040s");
-	publicChannels.emplace_back("AboutGame");
-	publicChannels.emplace_back("AboutStudy");
-	publicChannels.emplace_back("AboutHobby");
-	publicChannels.emplace_back("AboutExcercise");
-
-	publicChannels.emplace_back("Sample1");
-	publicChannels.emplace_back("Sample2");
-	publicChannels.emplace_back("Sample3");
-	publicChannels.emplace_back("Sample4");
-	publicChannels.emplace_back("Sample5");
-	publicChannels.emplace_back("Sample6");
-	publicChannels.emplace_back("Sample7");
-	publicChannels.emplace_back("Sample8");
 }
 
 DummyHandler::~DummyHandler()
@@ -76,6 +56,22 @@ void DummyHandler::Close()
 bool DummyHandler::Start(const std::string& ip)
 {
 	if (isInitialized == true)	return false;
+
+	//공개채널 리스트 파일 읽기
+	std::ifstream publicChannelFile("../Common/PublicChannel.txt");
+	if (publicChannelFile.is_open() == false)
+	{
+		std::cout << "cannot open public Channel list file\n";
+		return false;
+	}
+	
+	std::string token;
+	while (std::getline(publicChannelFile, token))
+	{
+		if(token.empty() == false)
+			publicChannels.push_back(token);
+	}
+	publicChannelFile.close();
 
 	//더미 클라이언트 활성화, 로그인
 	if (false == AddDummy(START_DUMMY_COUNT, ip))
@@ -120,7 +116,7 @@ bool DummyHandler::AddDummy(unsigned int count
 	{
 		int newSerial = serialOffset + i;
 		Dummy& dummy = dummies[newSerial].first;
-		Overlap_Exp& recvOverlap = dummies[newSerial].second.recvOverlapExp;
+		Overlap_Exp& recvOverlap = dummies[newSerial].second.RecvOverlapExp;
 
 		if (false == dummy.Connect(ip.c_str()))
 		{
@@ -155,8 +151,6 @@ bool DummyHandler::AddDummy(unsigned int count
 		loginPacket.Serialize(loginStream);
 		
 		SendPacket(newSerial, loginStream.GetBuffer());
-
-		::Sleep(1);
 	}
 
 	std::cout << lastSerial - serialOffset << " dummies login!\n";
@@ -236,9 +230,7 @@ void DummyHandler::ProcessPacket(int serial, const void* packet, int size)
 	StreamReader stream(packet, size);
 
 	auto procedure = packetProcedures.find(type);
-	if (procedure == packetProcedures.end())
-		; //무시하는 패킷들
-	else
+	if (procedure != packetProcedures.end())
 		(this->*packetProcedures[type])(serial, stream);
 }
 
@@ -293,13 +285,13 @@ void DummyHandler::SendRandomPacket(int serial)
 	if (IsValidSerial(serial) == false
 		|| dummies[serial].first.isLogin == false) return;
 
-	std::uniform_real_distribution<double> urd(0.0, 1.0);
+	static const std::uniform_real_distribution<double> urd(0.0, 1.0);
 
-	static constexpr double	COEF_CHATTING = 0.20;
-	static constexpr double	COEF_WHISPER = 0.40;
-	static constexpr double	COEF_CHANNELLIST = 0.60;
-	static constexpr double	COEF_CHANNELCHANGE = 0.80;
-	static constexpr double	COEF_KICK = 1.0;
+	static const double	COEF_CHATTING = 0.20;
+	static const double	COEF_WHISPER = 0.40;
+	static const double	COEF_CHANNELLIST = 0.60;
+	static const double	COEF_CHANNELCHANGE = 0.80;
+	static const double	COEF_KICK = 1.0;
 
 	double coef = urd(RANDOM_ENGINE);
 
@@ -351,7 +343,7 @@ void DummyHandler::RequestWhisper(int serial)
 	chatPacket.listener = randomListener;
 	chatPacket.chat = chat;
 
-	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	unsigned char buf[Packet_Base::MAX_BUF_SIZE];
 	StreamWriter chatStream(buf, sizeof(buf));
 	chatPacket.Serialize(chatStream);
 
@@ -367,7 +359,7 @@ void DummyHandler::RequestChannelList(int serial)
 	listPacket.customChannelCount = 0;
 	listPacket.publicChannelNames.clear();
 
-	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	unsigned char buf[Packet_Base::MAX_BUF_SIZE];
 	StreamWriter listStream(buf, sizeof(buf));
 	listPacket.Serialize(listStream);
 
@@ -388,7 +380,7 @@ void DummyHandler::RequestChannelChange(int serial)
 	enterPacket.channelName = randomChannel;
 	enterPacket.channelMaster.clear();
 
-	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	unsigned char buf[Packet_Base::MAX_BUF_SIZE];
 	StreamWriter enterStream(buf, sizeof(buf));
 	enterPacket.Serialize(enterStream);
 
@@ -413,7 +405,7 @@ void DummyHandler::RequestKick(int serial)
 	kickPacket.kicker = dummy.userName;
 	kickPacket.channelName = dummy.userChannel;
 
-	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	unsigned char buf[Packet_Base::MAX_BUF_SIZE];
 	StreamWriter kickStream(buf, sizeof(buf));
 	kickPacket.Serialize(kickStream);
 
@@ -436,7 +428,7 @@ void DummyHandler::RequestChatting(int serial)
 	chatPacket.listener.clear();
 	chatPacket.chat = chat;
 
-	unsigned char* buf[Packet_Base::MAX_BUF_SIZE];
+	unsigned char buf[Packet_Base::MAX_BUF_SIZE];
 	StreamWriter chatStream(buf, sizeof(buf));
 	chatPacket.Serialize(chatStream);
 
@@ -473,9 +465,9 @@ std::string DummyHandler::GetRandomChannel() const
 		return "";
 
 	std::uniform_real_distribution<double> urd(0.0, 1.0);
-	static constexpr double	COEF_PUBLIC = 0.70;
-	static constexpr double	COEF_TOUSER = 0.90;
-	static constexpr double COEF_CUSTOM = 1.0;
+	static const double	COEF_PUBLIC = 0.70;
+	static const double	COEF_TOUSER = 0.90;
+	static const double COEF_CUSTOM = 1.0;
 	
 	double coef = urd(RANDOM_ENGINE);
 	if (0.0 <= coef && coef < COEF_PUBLIC)
@@ -524,15 +516,15 @@ namespace
 				std::cout << "WorkerThreadStart() - invalid serial error\n";
 				return;
 			}
-
-			Dummy& dummy = handler->GetDummies()[serial].first;
-			Overlap_Info& overlapInfo = handler->GetDummies()[serial].second;
-
 			if (0 == iosize)
 			{
-				dummy.Close();
+				handler->GetDummies()[serial].first.Close();
 				continue;
 			}
+
+			
+			Dummy& dummy = handler->GetDummies()[serial].first;
+			Overlap_Info& overlapInfo = handler->GetDummies()[serial].second;
 
 			if (OPERATION_RECV == overlapExp->Operation)
 			{
@@ -577,8 +569,8 @@ namespace
 			
 				DWORD flags = 0;
 				int recvRet = ::WSARecv(dummy.GetSocket(),
-					&overlapInfo.recvOverlapExp.WsaBuf, 1, NULL, &flags,
-					&overlapInfo.recvOverlapExp.Original_Overlap, NULL);
+					&overlapInfo.RecvOverlapExp.WsaBuf, 1, NULL, &flags,
+					&overlapInfo.RecvOverlapExp.Original_Overlap, NULL);
 				if (0 != recvRet)
 				{
 					int error_no = WSAGetLastError();
@@ -631,9 +623,9 @@ namespace
 					PostQueuedCompletionStatus(handler->GetIocpHandle(), 1,
 						ev.Serial, &overlapExp->Original_Overlap);
 				}
-				catch (...)
+				catch (const std::bad_alloc&)
 				{
-					std::cout << "TimerThreadStart() - exception\n";
+					std::cout << "TimerThreadStart() - new exception\n";
 				}
 
 				ul.lock();

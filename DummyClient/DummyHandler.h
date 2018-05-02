@@ -3,12 +3,12 @@
 #include "Dummy.h"
 #include "../Common/protocol.h"
 #include "../Common/stream.h"
+
 #include <vector>
 #include <string>
 #include <memory>
 #include <mutex>
 #include <queue>
-#include <set>
 #include <map>
 #include <random>
 
@@ -30,7 +30,7 @@ struct Overlap_Exp
 
 struct Overlap_Info
 {
-	Overlap_Exp				recvOverlapExp;
+	Overlap_Exp				RecvOverlapExp;
 
 	unsigned int			PacketSize;
 	unsigned int			PreviousCursor;
@@ -57,10 +57,10 @@ public:
 class DummyHandler
 {
 private:
-	static constexpr unsigned int NUM_WORKER_THREADS	 = 8;
-	static constexpr unsigned int START_DUMMY_COUNT		 = 1000;
-	static constexpr unsigned int MAX_DUMMY_COUNT		 = 10000;
-	static constexpr unsigned int PACKET_DELAY_TIME		 = 2000;
+	static const unsigned int NUM_WORKER_THREADS	 = 8;
+	static const unsigned int START_DUMMY_COUNT		 = 1000;
+	static const unsigned int MAX_DUMMY_COUNT		 = 10000;
+	static const unsigned int PACKET_DELAY_TIME		 = 2000;
 
 	static thread_local std::default_random_engine RANDOM_ENGINE;
 	using Timer_Queue = std::priority_queue < Event_Info, std::vector<Event_Info>, Event_Compare>;

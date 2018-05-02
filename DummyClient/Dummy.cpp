@@ -1,5 +1,4 @@
 #include "Dummy.h"
-#pragma comment (lib, "ws2_32.lib")
 
 
 Dummy::Dummy()
