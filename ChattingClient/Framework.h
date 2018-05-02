@@ -39,7 +39,7 @@ public:
 	
 	void ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam);
 	void ProcessInput();
-	void ProcessPacket(const unsigned char* packet, int size);
+	void ProcessPacket(const void* packet, int size);
 
 	WNDPROC GetOldInputProc() const { return oldInputProc; }
 	HWND	GetEditInput() const { return editInput; }

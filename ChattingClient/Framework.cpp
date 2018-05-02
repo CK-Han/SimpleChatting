@@ -4,7 +4,7 @@
 #include <sstream>
 #include <vector>
 #include <cctype>
-
+#include <locale>
 
 //editInput의 Enter 입력 처리를 위한 서브클래싱용 프로시저
 LRESULT CALLBACK EditSubProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -93,7 +93,7 @@ bool Framework::Run(HWND hWnd, HINSTANCE instance)
 	mainWindow = hWnd;
 	mainInstance = instance;
 	
-	RECT rect;
+	RECT rect{ 0 };
 	::GetClientRect(mainWindow, &rect);
 	clientWidth = rect.right - rect.left;
 	clientHeight = rect.bottom - rect.top;
@@ -270,11 +270,13 @@ bool Framework::IsValidUserName(const std::string& id) const
 {
 	static const unsigned short KOREAN_CODE_BEGIN = 44032;
 	static const unsigned short KOREAN_CODE_END = 55199;
-
+	static const std::locale	KOREAN_LOCALE("Korean");
+	
 	for (auto iter = id.cbegin(); iter != id.cend(); ++iter)
 	{
 		char ch = *iter;
-		if (ch < 0)
+
+		if (false == std::isalnum(ch, KOREAN_LOCALE))
 		{
 			if ((++iter) != id.cend())
 			{
@@ -282,7 +284,7 @@ bool Framework::IsValidUserName(const std::string& id) const
 				strKor += *iter;
 
 				wchar_t kor;
-				int resConvert = ::MultiByteToWideChar(CP_ACP, MB_PRECOMPOSED, strKor.c_str(), 2, &kor, 1);
+				int resConvert = ::MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, strKor.c_str(), 2, &kor, 1);
 				if (resConvert != 1
 					|| kor < KOREAN_CODE_BEGIN
 					|| KOREAN_CODE_END < kor)
@@ -291,12 +293,8 @@ bool Framework::IsValidUserName(const std::string& id) const
 			else
 				return false;
 		}
-		else if (false == std::isalnum(ch))
-		{
-			return false;
-		}
 	}
-
+	
 	return true;
 }
 
@@ -310,7 +308,7 @@ void Framework::SeekLastAddedCursor(HWND listBox)
 ////////////////////////////////////////////////////////////////////////////
 //Receive From Server
 
-void Framework::ProcessPacket(const unsigned char* packet, int size)
+void Framework::ProcessPacket(const void* packet, int size)
 {
 	if (packet == nullptr || size > Packet_Base::MAX_BUF_SIZE)
 		return;

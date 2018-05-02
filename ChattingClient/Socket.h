@@ -17,7 +17,7 @@ public:
 	void ReadPacket(SOCKET sock);
 	void SendPacket(const void* packet);
 
-	void ProcessPacket(const unsigned char* packet, int size);
+	void ProcessPacket(const void* packet, int size);
 
 
 private:

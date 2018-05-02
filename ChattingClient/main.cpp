@@ -42,7 +42,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static HWND editIP, buttonIP;
-	static const int ID_SUBMITIP = 1010;
+	static const int ID_SUBMITIP = 1000;
 	static char ipAddress[16];
 
 	switch (msg) 
@@ -50,7 +50,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		editIP = ::CreateWindow("edit", "127.0.0.1", WS_CHILD | WS_VISIBLE | WS_BORDER |
 			ES_AUTOHSCROLL, 10, 10, 200, 25, hWnd, 0, gInstance, NULL);
-		buttonIP = ::CreateWindow("button", "¡¶√‚", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+		buttonIP = ::CreateWindow("button", "Submit", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
 			220, 10, 50, 25, hWnd, (HMENU)ID_SUBMITIP, gInstance, NULL);
 		break;
 		

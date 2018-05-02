@@ -121,7 +121,7 @@ void Socket::SendPacket(const void* packet)
 	}
 }
 
-void Socket::ProcessPacket(const unsigned char* packet, int size)
+void Socket::ProcessPacket(const void* packet, int size)
 {
 	Framework::GetInstance()->ProcessPacket(packet, size);
 }
