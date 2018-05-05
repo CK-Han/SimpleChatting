@@ -6,6 +6,14 @@
 #include <map>
 #include "../Common/Protocol.h"
 
+/**
+	@class		Framework
+	@brief		채팅 클라이언트 메인 프레임워크
+	@details	button, edit control, list box를 사용해 간단히 만든 채팅 클라이언트
+	@author		cgHan
+	@date		2018/05/05
+	@version	0.0.1
+*/
 class Framework
 {
 private:
@@ -38,7 +46,7 @@ public:
 	bool Run(HWND hWnd, HINSTANCE instance);
 	
 	void ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam);
-	void ProcessInput();
+	void ProcessUserInput();
 	void ProcessPacket(const void* packet, int size);
 
 	WNDPROC GetOldInputProc() const { return oldInputProc; }

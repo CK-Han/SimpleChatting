@@ -1,6 +1,9 @@
 #include "stream.h"
 
 
+/**
+	@throw	StreamBase::InvalidStreamArgument : buf가 nullptr일 시
+*/
 StreamWriter::StreamWriter(void* buf, SizeType size)
 	: buffer(reinterpret_cast<char*>(buf))
 	, maxsize(size)
@@ -65,6 +68,12 @@ StreamWriter& StreamWriter::operator<<(unsigned long long src)
 	Append(&src, sizeof(src));	return *this;
 }
 
+
+/**
+	@brief		스트림에 날 데이터를 복사한다.
+	@throw		InvalidStreamArgument : src가 nullptr
+				StreamWriteOverflow : 복사시 오버플로우 발생한 경우
+*/
 void StreamWriter::WriteRawData(const void* src, SizeType size)
 {
 	if (src == nullptr)
@@ -73,6 +82,11 @@ void StreamWriter::WriteRawData(const void* src, SizeType size)
 	Append(src, size);
 }
 
+/**
+	@brief		스트림에 지정한 위치로부터 덮어쓰기
+	@throw		InvalidStreamArgument : src가 nullptr
+				StreamWriteOverflow : 복사시 오버플로우 발생한 경우
+*/
 void StreamWriter::OverwriteRawData(SizeType begin, const void* src, SizeType size)
 {
 	if (src == nullptr)
@@ -86,7 +100,12 @@ void StreamWriter::OverwriteRawData(SizeType begin, const void* src, SizeType si
 		cursor = (begin + size);
 }
 
-
+/**
+	@brief		버퍼에 데이터 추가
+	@details	cursor를 통해 버퍼의 끝을 지정한다.
+	@throw		InvalidStreamArgument : src가 nullptr
+				StreamWriteOverflow : 복사시 오버플로우 발생한 경우
+*/
 void StreamWriter::Append(const void* src, SizeType size)
 {
 	if (src == nullptr)
@@ -102,7 +121,9 @@ void StreamWriter::Append(const void* src, SizeType size)
 
 /////////////////////////////////////////////////////////////////////////////////////////////
 
-
+/**
+	@throw	StreamBase::InvalidStreamArgument : buf가 nullptr일 시
+*/
 StreamReader::StreamReader(const void* buf, SizeType size)
 	: buffer(reinterpret_cast<const char*>(buf))
 	, maxsize(size)
@@ -168,6 +189,11 @@ StreamReader& StreamReader::operator>>(unsigned long long& dst)
 }
 
 
+/**
+	@brief		지정된 크기만큼 버퍼로부터 데이터를 읽는다.
+	@throw		InvalidStreamArgument : dst가 nullptr
+				StreamReadUnderflow : 읽을때 언더플로우 발생한 경우
+*/
 void StreamReader::ReadRawData(void* dst, SizeType size)
 {
 	if (dst == nullptr)
@@ -176,6 +202,12 @@ void StreamReader::ReadRawData(void* dst, SizeType size)
 	Parse(dst, size);
 }
 
+/**
+	@brief		버퍼로부터 데이터 파싱
+	@details	cursor를 통해 지금까지 읽은 위치의 끝을 지정한다.
+	@throw		InvalidStreamArgument : dst가 nullptr
+				StreamReadUnderflow : 읽을때 언더플로우 발생한 경우
+*/
 void StreamReader::Parse(void* dst, SizeType size)
 {
 	if (dst == nullptr)

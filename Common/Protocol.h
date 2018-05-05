@@ -8,6 +8,14 @@
 class StreamWriter;
 class StreamReader;
 
+/**
+	@class Serializble
+	@brief		통신을 위한 직렬화 인터페이스
+	@details	
+	@author		cgHan
+	@date		2018/05/05
+	@version	0.0.1
+*/
 class Serializable
 {
 public:
@@ -17,7 +25,14 @@ public:
 	virtual ~Serializable() {}
 };
 
-
+/**
+	@class Packet_Base
+	@brief		통신을 위해 기본적인 내용이 정의된 패킷 베이스 클래스
+	@details	상수 나열, 별칭을 통한 기본 타입설정, 패킷 타입 관리, 공통적인 직렬화 관련 동작 정의
+	@author		cgHan
+	@date		2018/05/05
+	@version	0.0.1
+*/
 class Packet_Base
 	: public Serializable
 {
@@ -74,6 +89,9 @@ Packet_Base::ValueType GetPacketType(const void* buf);
 
 ///////////////////////////////////////////////////////////////////////////////////////
 
+/**
+	@brief		서버 -> 클라이언트 시스템 메세지
+*/
 struct Packet_System
 	: public Packet_Base
 {
@@ -85,6 +103,10 @@ struct Packet_System
 	StringType		systemMessage;
 };
 
+/**
+	@brief		클라이언트 -> 서버 : 이 이름으로 접속하고싶다
+				서버 -> 클라이언트 : isCreated로 생성 되었는지 알림
+*/
 struct Packet_Login
 	: public Packet_Base
 {
@@ -93,11 +115,15 @@ struct Packet_Login
 	void Serialize(StreamWriter&) const;
 	void Deserialize(StreamReader&);
 
-	bool			isCreated; //only server uses. sends to client whether successfully created or not
+	bool			isCreated;
 	StringType		userName;
 };
 
-//Custom channel은 개수만 알려준다.
+
+/**
+	@brief		클라이언트 -> 서버 : 리스트 요청, 데이터를 담지 않음
+				서버 -> 클라이언트 : 리스트 전달, 커스텀채널은 개수만 확인
+*/
 struct Packet_Channel_List
 	: public Packet_Base
 {
@@ -110,6 +136,10 @@ struct Packet_Channel_List
 	std::vector<StringType>		publicChannelNames;
 };
 
+/**
+	@brief		클라이언트 -> 서버 : 채널 연결 요청
+				서버 -> 클라이언트 : 채널 연결 확인, 방장이 누구인지 알림
+*/
 struct Packet_Channel_Enter
 	: public Packet_Base
 {
@@ -122,6 +152,9 @@ struct Packet_Channel_Enter
 	StringType		channelMaster;
 };
 
+/**
+	@brief		서버 -> 클라이언트 : 채널에 존재하는 유저 리스트 전달
+*/
 struct Packet_Channel_Users
 	: public Packet_Base
 {
@@ -134,6 +167,9 @@ struct Packet_Channel_Users
 	std::vector<StringType>		userNames;
 };
 
+/**
+	@brief		서버 -> 클라이언트 : 클라이언트가 존재하는 채널에 새 유저 접속 알림
+*/
 struct Packet_Newface_Enter
 	: public Packet_Base
 {
@@ -145,6 +181,9 @@ struct Packet_Newface_Enter
 	StringType			userName;
 };
 
+/**
+	@brief		서버 -> 클라이언트 : 유저가 채널을 떠났으며, 강퇴에 의한 것인지에 대한 정보 전달
+*/
 struct Packet_User_Leave
 	: public Packet_Base
 {
@@ -157,6 +196,9 @@ struct Packet_User_Leave
 	StringType			userName;
 };
 
+/**
+	@brief		클라이언트 -> 서버 : 자신이 target을 강퇴하겠다 서버에 요청
+*/
 struct Packet_Kick_User
 	: public Packet_Base
 {
@@ -170,6 +212,10 @@ struct Packet_Kick_User
 	StringType			channelName;
 };
 
+/**
+	@brief		클라이언트 -> 서버 : 채팅내용 전달, 귓속말인지 여부 포함
+				서버 -> 클라이언트 : 채팅내용 전달, 귓속말이 아닌 경우 채널 유저들에게 broadcast
+*/
 struct Packet_Chatting
 	: public Packet_Base
 {
@@ -184,6 +230,9 @@ struct Packet_Chatting
 	StringType			chat;
 };
 
+/**
+	@brief		서버 -> 클라이언트 : 채널의 방장이 exit, 방장이 바뀌었음을 채널에 broadcast
+*/
 struct Packet_New_Master
 	: public Packet_Base
 {

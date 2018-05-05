@@ -6,7 +6,10 @@
 #include <cctype>
 #include <locale>
 
-//editInput의 Enter 입력 처리를 위한 서브클래싱용 프로시저
+/**
+	@brief		editInput의 Enter 입력 처리를 위한 서브클래싱용 프로시저
+	@details	Enter 입력만을 처리, Focus 활성화(클릭)시 내용 비우기
+*/
 LRESULT CALLBACK EditSubProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
@@ -15,7 +18,7 @@ LRESULT CALLBACK EditSubProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		switch (wParam)
 		{
 		case VK_RETURN:
-			Framework::GetInstance()->ProcessInput();
+			Framework::GetInstance()->ProcessUserInput();
 			return 0;
 		}
 		break;
@@ -28,7 +31,19 @@ LRESULT CALLBACK EditSubProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return ::CallWindowProc(Framework::GetInstance()->GetOldInputProc(), hWnd, msg, wParam, lParam);
 }
 
-//입력이 Command인지 확인하기 위한 문자열 파싱
+/**
+	@brief		사용자 입력이 Command인지 확인하기 위한 문자열 파싱
+	@details	문자열로부터 구분자를 통해 토큰으로 나누어, 그 내용을 std::vector에 담아 반환
+				std::stringstream을 활용하여 파싱한다.
+	@param input		사용자로부터 입력된 문자열
+	@param delimeter	문자열을 파싱하기 위한 구분자
+	@return	std::vector<std::string>
+			in-out 인자보다는 이동을 가진 컨테이너를 반환하도록 한다.
+	
+	@todo	제공되는 표준 파싱함수를 활용하는 방향을 고려해보자.
+			더불어, string, char의 문자 집합에 와이드 문자에 대해서도 처리할 수 있어야 한다.
+			그것이 필요해진다면, string::value_type 을 통해 일반화시킨 템플릿 함수여야 할 것이다.
+*/
 std::vector<std::string>
 	SplitString(const std::string& input, char delimeter)
 {
@@ -44,6 +59,9 @@ std::vector<std::string>
 	return tokens;
 };
 
+/**
+	@brief		멤버변수 초기화, WSAStartup
+*/
 Framework::Framework()
 	: clientWidth(0)
 	, clientHeight(0)
@@ -62,12 +80,21 @@ Framework::Framework()
 	WSAStartup(MAKEWORD(2, 2), &wsadata);
 }
 
+/**
+	@brief		WSACleanup
+*/
 Framework::~Framework()
 {
 	WSACleanup();
 }
 
-
+/**
+	@brief		소켓 connect 이후 호출되는 프레임워크 초기화
+	@details	윈도우 핸들, 인스턴스 초기화 및 패킷 처리 프로시저 맵 초기화
+				클라이언트에 그려질 리스트 박스 및 버튼, edit, static 박스 초기화
+	@return		성공적 초기화시에만 true 
+				윈도우 핸들이 유효한 경우, 이후 초기화 실패시에는 false 반환 및 messagebox 출력
+*/
 bool Framework::Run(HWND hWnd, HINSTANCE instance)
 {
 	if (hWnd == NULL || instance == NULL)
@@ -136,6 +163,9 @@ bool Framework::Run(HWND hWnd, HINSTANCE instance)
 	return isRunning;
 }
 
+/**
+	@brief		SELECT ERROR 및 FD_CLOSE와 FD_READ에 대해서 처리한다.
+*/
 void Framework::ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
@@ -166,7 +196,11 @@ void Framework::ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
 	}
 }
 
-void Framework::ProcessInput()
+/**
+	@brief		사용자 입력(Enter) 처리
+	@details	Enter 입력시 edit을 비우고, 입력이 커맨드 요청인지 채팅인지 확인하여 처리한다.
+*/
+void Framework::ProcessUserInput()
 {
 	char input[Packet_Base::MAX_MESSAGE_SIZE];
 	::GetWindowText(editInput, input, Packet_Base::MAX_MESSAGE_SIZE);
@@ -224,6 +258,9 @@ void Framework::ProcessInput()
 ////////////////////////////////////////////////////////////////////////////
 //Private Functions
 
+/**
+	@brief		사용자 입력을 파싱하여 내용이 커맨드 입력인지 채팅인지 확인하여 타입 반환
+*/
 Framework::CommandType 
 	Framework::GetCommandType(const std::vector<std::string>& tokens) const
 {
@@ -254,7 +291,7 @@ Framework::CommandType
 		if (tokenCount == 2)
 			resultType = CommandType::KICKUSER;
 	}
-	else if (command.front() == '/')	//명령어시작 '/'이나 해당사항 없음
+	else if (command.front() == '/')	///명령어의 시작 키워드인 '/'이나 해당사항 없음
 	{
 		resultType = CommandType::MISUSE; 
 	}
@@ -266,6 +303,13 @@ Framework::CommandType
 	return resultType;
 }
 
+/**
+	@brief		사용할 Id가 유효한지 확인한다.
+	@details	std::isalnum으로 한 문자씩 확인하며, 조합되는 문자인 경우
+				2 바이트를 읽어 wide 문자로 변경, 한국어 표기에 맞는 값인지 확인한다.
+	
+	@todo		보다 적절한 표준 함수를 찾아서 적용하도록 한다.
+*/
 bool Framework::IsValidUserName(const std::string& id) const
 {
 	static const unsigned short KOREAN_CODE_BEGIN = 44032;
@@ -298,6 +342,9 @@ bool Framework::IsValidUserName(const std::string& id) const
 	return true;
 }
 
+/**
+	@brief		리스트 박스에 새로운 내용이 insert될 시, 커서를 그 내용에 맞추어 최신을 유지한다.
+*/
 void Framework::SeekLastAddedCursor(HWND listBox)
 {
 	int count = ::SendMessage(listBox, LB_GETCOUNT, 0, 0);
@@ -322,6 +369,7 @@ void Framework::ProcessPacket(const void* packet, int size)
 	else
 		(this->*procedures[type])(stream);
 }
+
 
 
 void Framework::Process_SystemMessage(StreamReader& in)

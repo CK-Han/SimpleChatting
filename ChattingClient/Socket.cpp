@@ -3,6 +3,9 @@
 #pragma comment (lib, "ws2_32.lib")
 
 
+/**
+	@brief		멤버변수 초기화, WSABuf 설정
+*/
 Socket::Socket()
 	: hWnd(NULL)
 	, clientSocket(INVALID_SOCKET)
@@ -25,19 +28,28 @@ Socket::~Socket()
 }
 
 
+/**
+	@brief		소켓생성 - Connect - AsyncSelect 등록 진행
+	@return		모두 성공시에 true 반환
+				윈도우 핸들 초기화 이후에 실패시에는 메시지박스 출력
+	@warning	ip가 날 포인터이며, nullptr 검사만 진행하므로 주의한다. (invalid할 시 connect 실패일 것이다.)
+*/
 bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 {
 	if (serverIP == nullptr || mainWindow == NULL
 		|| isInitialized == true)
 	{
-		//error!
 		return false;
 	}
 
 	hWnd = mainWindow;
 	clientSocket = ::WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, 0);
 	if (clientSocket == INVALID_SOCKET)
+	{
+		::MessageBox(mainWindow, "WSASocket Error!!", "Error!!", MB_OK);
+		closesocket(clientSocket);
 		return false;
+	}
 
 	SOCKADDR_IN serverAddr;
 	::ZeroMemory(&serverAddr, sizeof(SOCKADDR_IN));
@@ -45,19 +57,29 @@ bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 	serverAddr.sin_port = htons(Packet_Base::PORT_NUMBER);
 	serverAddr.sin_addr.s_addr = inet_addr(serverIP);
 
-	int Result = WSAConnect(clientSocket, (sockaddr *)&serverAddr, sizeof(serverAddr), nullptr, nullptr, nullptr, nullptr);
-	if (SOCKET_ERROR == Result)
+	int retVal = WSAConnect(clientSocket, (sockaddr *)&serverAddr, sizeof(serverAddr), nullptr, nullptr, nullptr, nullptr);
+	if (SOCKET_ERROR == retVal)
 	{
 		::MessageBox(mainWindow, "WSAConnect Error!!", "Error!!", MB_OK);
 		return false;
 	}
 
-	WSAAsyncSelect(clientSocket, mainWindow, WM_SOCKET, FD_CLOSE | FD_READ);
+	retVal = WSAAsyncSelect(clientSocket, mainWindow, WM_SOCKET, FD_CLOSE | FD_READ);
+	if (SOCKET_ERROR == retVal)
+	{
+		::MessageBox(mainWindow, "WSAAsyncSelect Error!!", "Error!!", MB_OK);
+		return false;
+	}
 
 	isInitialized = true;
 	return isInitialized;
 }
 
+/**
+	@brief		데이터 Recv하여 패킷 조립, 처리함수 호출
+	@detailis	AsyncSelect Read 이벤트 발생시 호출되어 blocking recv 진행
+				이전에 io가 덜 되어 조립하지 못한 경우에 대한 처리
+*/
 void Socket::ReadPacket(SOCKET sock)
 {
 	DWORD iobyte = 0, ioflag = 0;
@@ -69,20 +91,20 @@ void Socket::ReadPacket(SOCKET sock)
 	}
 
 	DWORD remainedIoByte = iobyte;
-	unsigned char* ptr = reinterpret_cast<unsigned char*>(recvWsaBuf.buf);
+	unsigned char* ioPtr = reinterpret_cast<unsigned char*>(recvWsaBuf.buf);
 
 	if (savedPacketSize + remainedIoByte > sizeof(packetBuf))
 	{
 		int empty = sizeof(packetBuf) - savedPacketSize;
-		std::memcpy(packetBuf + savedPacketSize, ptr, empty);
+		std::memcpy(packetBuf + savedPacketSize, ioPtr, empty);
 
 		remainedIoByte -= empty;
-		ptr += empty;
+		ioPtr += empty;
 		savedPacketSize += empty;
 	}
 	else
 	{
-		std::memcpy(packetBuf + savedPacketSize, ptr, remainedIoByte);
+		std::memcpy(packetBuf + savedPacketSize, ioPtr, remainedIoByte);
 		savedPacketSize = iobyte;
 		remainedIoByte = 0;
 	}
@@ -91,22 +113,26 @@ void Socket::ReadPacket(SOCKET sock)
 	{
 		inPacketSize = GetPacketSize(packetBuf);
 
+		//조립가능
 		if (inPacketSize <= savedPacketSize)
-		{	//조립가능
+		{
 			ProcessPacket(packetBuf, inPacketSize);
 			std::memmove(packetBuf, packetBuf + inPacketSize
 				, savedPacketSize - inPacketSize);
 
 			savedPacketSize -= inPacketSize;
 			inPacketSize = 0;
+
+			if (remainedIoByte > 0 
+				&& (savedPacketSize + remainedIoByte) <= sizeof(packetBuf))
+			{
+				std::memcpy(packetBuf + savedPacketSize, ioPtr, remainedIoByte);
+				savedPacketSize += remainedIoByte;
+				remainedIoByte = 0;
+			}
+
 		}
 	} while (inPacketSize == 0);
-
-	if (remainedIoByte > 0)
-	{
-		std::memcpy(packetBuf + savedPacketSize, ptr, remainedIoByte);
-		savedPacketSize += remainedIoByte;
-	}
 }
 
 

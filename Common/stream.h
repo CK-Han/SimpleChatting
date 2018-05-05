@@ -1,7 +1,14 @@
 #pragma once
 #include <stdexcept>
 
-
+/**
+	@class StreamBase
+	@brief		StreamWriter와 Reader의 베이스 클래스
+	@details	공통적으로 사용되는 내용들에 대한 정의
+	@author		cgHan
+	@date		2018/05/05
+	@version	0.0.1
+*/
 class StreamBase
 {
 public:
@@ -16,6 +23,14 @@ public:
 };
 
 
+/**
+	@class StreamWriter
+	@brief		버퍼 쓰기 지원 클래스
+	@details	버퍼 쓰기의 방식을 일관적으로 하며, 예외 상황에 대해 대응한다.
+	@author		cgHan
+	@date		2018/05/05
+	@version	0.0.1
+*/
 class StreamWriter
 	: public StreamBase
 {
@@ -60,7 +75,14 @@ private:
 
 
 
-
+/**
+	@class StreamReader
+	@brief		버퍼 읽기 지원 클래스
+	@details	버퍼 읽기의 방식을 일관적으로 하며, 예외 상황에 대해 대응한다.
+	@author		cgHan
+	@date		2018/05/05
+	@version	0.0.1
+*/
 class StreamReader
 	: public StreamBase
 {
