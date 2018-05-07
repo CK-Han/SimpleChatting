@@ -12,7 +12,7 @@
 class StreamBase
 {
 public:
-	using SizeType = unsigned int;
+	using SizeType = size_t;
 
 	class InvalidStreamArgument
 		: public std::invalid_argument

@@ -16,7 +16,7 @@ public:
 	virtual void	Exit(const Client* client) = 0;
 	
 
-	unsigned int						GetUserCount() const { return clientsInChannel.size(); }
+	size_t								GetUserCount() const { return clientsInChannel.size(); }
 	std::string							GetChannelName() const { return channelName; }
 	std::string							GetChannelMaster() const { return channelMaster; }
 	std::mutex&							GetChannelLock() { return channelLock; }

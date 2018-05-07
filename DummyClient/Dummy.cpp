@@ -13,9 +13,18 @@ Dummy::~Dummy()
 
 ////////////////////////////////////////////////////////////////////////////
 
+/**
+	@brief		소켓 생성, 서버 connect
+	@details	overlapped socket으로 생성한다.
+	@return		소켓 생성 및 connect 성공시 true
+
+	@warning	ip가 날 포인터이므로 사용에 주의 (invalid할 시 connect 에러일 것이다.)
+*/
 bool Dummy::Connect(const char* serverIP)
 {
 	clientSocket = ::WSASocketW(AF_INET, SOCK_STREAM, IPPROTO_TCP, NULL, 0, WSA_FLAG_OVERLAPPED);
+	if (clientSocket == INVALID_SOCKET)
+		return false;
 
 	SOCKADDR_IN serverAddr;
 	::ZeroMemory(&serverAddr, sizeof(SOCKADDR_IN));
@@ -33,5 +42,5 @@ bool Dummy::Connect(const char* serverIP)
 void Dummy::Close()
 {
 	isLogin = false;
-	::shutdown(clientSocket, SD_BOTH);
+	closesocket(clientSocket);
 }

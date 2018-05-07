@@ -26,6 +26,6 @@ void main()
 		else if(ch == '-')
 			DummyHandler::GetInstance()->DummyHandler::GetInstance()->CloseDummy(50);
 	}
-	
+
 	cout << "프로그램 종료\n";
 }

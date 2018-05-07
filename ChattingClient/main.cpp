@@ -42,7 +42,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static HWND editIP, buttonIP;
-	static const int ID_SUBMITIP = 1000;
+	static const LONG_PTR ID_SUBMITIP = 1000;
 	static char ipAddress[16];
 
 	switch (msg) 

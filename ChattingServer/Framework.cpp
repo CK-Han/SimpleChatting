@@ -6,6 +6,7 @@
 #include <random>
 #include <fstream>
 
+
 namespace
 {
 	void AcceptThreadStart();
@@ -15,12 +16,11 @@ namespace
 
 Framework::Framework()
 	: hIocp(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0))
-	, isShutDown(false)
 {
 	WSADATA	wsadata;
 	::WSAStartup(MAKEWORD(2, 2), &wsadata);
 
-	Initialize();
+	isShutDown = !Initialize();
 }
 
 
@@ -29,11 +29,23 @@ Framework::~Framework()
 	ShutDown();
 }
 
-void Framework::Initialize()
+bool Framework::Initialize()
 {
-	clients.reserve(MAX_CLIENT_COUNT);
-	for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
-		clients.emplace_back(std::make_unique<Client>());
+	try
+	{
+		clients.reserve(MAX_CLIENT_COUNT);
+		for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
+			clients.emplace_back(new Client);
+
+		sendOverlapExps.reserve(MAX_OVERLAPEXP_COUNT);
+		for (auto i = 0; i < MAX_OVERLAPEXP_COUNT; ++i)
+			sendOverlapExps.emplace_back(new Overlap_Exp);
+	}
+	catch (const std::bad_alloc&)
+	{
+		std::cout << "Initialize() - bad_alloc\n";
+		return false;
+	}
 
 	for (auto i = 0; i < MAX_CLIENT_COUNT; ++i)
 		validClientSerials.push(i);
@@ -41,12 +53,15 @@ void Framework::Initialize()
 	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
 		validCustomChannelSerials.push(i);
 
+	for (auto i = 0; i < MAX_OVERLAPEXP_COUNT; ++i)
+		validOverlapExpSerials.push(i);
+
 	//공개채널 리스트 파일 읽기
 	std::ifstream publicChannelFile("../Common/PublicChannel.txt");
 	if (publicChannelFile.is_open() == false)
 	{
 		std::cout << "cannot open public Channel list file\n";
-		return;
+		return false;
 	}
 
 	std::string token;
@@ -60,6 +75,7 @@ void Framework::Initialize()
 	customChannels.reserve(MAX_CUSTOM_COUNT);
 	for (auto i = 0; i < MAX_CUSTOM_COUNT; ++i)
 		customChannels.emplace_back(std::make_shared<CustomChannel>(""));
+
 
 	packetProcedures.insert(std::make_pair(Packet_Login::typeAdder.GetType(), &Framework::Process_Login));
 	packetProcedures.insert(std::make_pair(Packet_Channel_List::typeAdder.GetType(), &Framework::Process_ChannelList));
@@ -76,8 +92,11 @@ void Framework::Initialize()
 	}
 	catch (const std::bad_alloc&)
 	{
-		std::cout << "Initialize() - new thread bad_alloc\n";
+		std::cout << "Initialize() - bad_alloc\n";
+		return false;
 	}
+
+	return true;
 }
 
 void Framework::ShutDown()
@@ -94,48 +113,46 @@ void Framework::ShutDown()
 
 ////////////////////////////////////////////////////////////////////////////
 //Send to Client
-void Framework::SendPacket(Framework::SERIAL_TYPE serial, const void* packet) const
+void Framework::SendPacket(Framework::SERIAL_TYPE serial, const void* packet)
 {
 	if (IsValidClientSerial(serial) == false
 		|| packet == nullptr) return;
 	
 	auto& client =  clients[serial];
-	if (client->IsLogin == false) return;
+	if (client->IsConnect == false) return;
 
-	Overlap_Exp* overlapExp = nullptr;
-	try
+
+	SERIAL_TYPE overlapSerial = GetSerialForUseOverlapExp();
+	if (SERIAL_ERROR == overlapSerial)
 	{
-		overlapExp = new Overlap_Exp;
-	}
-	catch(const std::bad_alloc&)
-	{
-		std::cout << "SendPacket() - new error!\n";
+		std::cout << "SendPacket() - GetSerialForUseOverlapExp timeout\n";
 		return;
 	}
-
-	::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
 	
-	overlapExp->Operation = OPERATION_SEND;
-	overlapExp->WsaBuf.buf = reinterpret_cast<CHAR *>(overlapExp->Iocp_Buffer);
-	overlapExp->WsaBuf.len = GetPacketSize(packet);
-	std::memcpy(overlapExp->Iocp_Buffer, packet, overlapExp->WsaBuf.len);
+	::ZeroMemory(&(*sendOverlapExps[overlapSerial]), sizeof(Overlap_Exp));
+	sendOverlapExps[overlapSerial]->Serial = overlapSerial;
+	sendOverlapExps[overlapSerial]->Operation = OPERATION_SEND;
+	sendOverlapExps[overlapSerial]->WsaBuf.buf = reinterpret_cast<CHAR *>(sendOverlapExps[overlapSerial]->Iocp_Buffer);
+	sendOverlapExps[overlapSerial]->WsaBuf.len = GetPacketSize(packet);
+	std::memcpy(sendOverlapExps[overlapSerial]->Iocp_Buffer, packet, sendOverlapExps[overlapSerial]->WsaBuf.len);
 
-	int ret = ::WSASend(client->ClientSocket, &overlapExp->WsaBuf, 1, NULL, 0,
-		&overlapExp->Original_Overlap, NULL);
-
+	int ret = ::WSASend(client->ClientSocket, &sendOverlapExps[overlapSerial]->WsaBuf, 1, NULL, 0,
+	&sendOverlapExps[overlapSerial]->Original_Overlap, NULL);
+	
 	if (0 != ret) 
 	{
 		int error_no = ::WSAGetLastError();
 		if (WSA_IO_PENDING != error_no 
-			&& WSAECONNRESET != error_no)
+			&& WSAECONNRESET != error_no
+			&& WSAECONNABORTED != error_no)
 			std::cout << "SendPacket::WSASend Error : " <<  error_no << std::endl;
 	}
 }
 
-void Framework::SendSystemMessage(Framework::SERIAL_TYPE serial, const std::string& msg) const
+void Framework::SendSystemMessage(Framework::SERIAL_TYPE serial, const std::string& msg)
 {
 	if (IsValidClientSerial(serial) == false 
-		|| clients[serial]->IsLogin == false) 
+		|| clients[serial]->IsConnect == false)
 		return;
 
 	Packet_System systemPacket;
@@ -171,7 +188,9 @@ void Framework::ProcessUserClose(Framework::SERIAL_TYPE serial)
 	if (IsValidClientSerial(serial) == false) return;
 	
 	auto& client = GetClient(serial);
-	if (client.IsLogin == false) return;
+	if (client.IsConnect == false) return;
+	//클라이언트 락 필요 X -> serial 반환 전
+	client.IsConnect = false;
 
 	if (client.ChannelName.empty() == false)
 	{	//채널이 존재한다 -> 채널에 존재하는 유저들에게 이 유저가 떠남을 알린다.
@@ -183,8 +202,8 @@ void Framework::ProcessUserClose(Framework::SERIAL_TYPE serial)
 
 	std::unique_lock<std::mutex> ulName(clientNameLock);
 	usedClientNames.erase(client.UserName);
+	ulName.unlock();
 
-	client.IsLogin = false;
 	client.UserName.clear();
 	client.ChannelName.clear();
 	validClientSerials.push(serial);
@@ -192,11 +211,19 @@ void Framework::ProcessUserClose(Framework::SERIAL_TYPE serial)
 
 void Framework::Process_Login(Framework::SERIAL_TYPE serial, StreamReader& in)
 {
-	if (IsValidClientSerial(serial) == false) return;
+	if (IsValidClientSerial(serial) == false
+		|| clients[serial]->IsConnect == false) 
+		return;
+	
+	//클라이언트 락 필요 X -> 패킷 처리 순서 지켜짐
+	//클라이언트가 login 처리 전에 요청을 여러개 보낼 수 있으나 순서가 지켜진다.
+	
+	//이미 login된 상태
+	if (clients[serial]->UserName.empty() == false) return;
 
 	Packet_Login from_packet;
 	from_packet.Deserialize(in);
-
+	
 	bool isDuplicated = false;
 
 	std::unique_lock<std::mutex> ulName(clientNameLock);
@@ -230,7 +257,7 @@ void Framework::Process_Login(Framework::SERIAL_TYPE serial, StreamReader& in)
 void Framework::Process_ChannelList(Framework::SERIAL_TYPE serial, StreamReader&)
 {
 	if (IsValidClientSerial(serial) == false
-		|| clients[serial]->IsLogin == false)
+		|| clients[serial]->IsConnect == false)
 		return;
 
 	Packet_Channel_List channelListPacket;
@@ -264,16 +291,19 @@ void Framework::Process_Chatting(Framework::SERIAL_TYPE serial, StreamReader& in
 	if (IsValidClientSerial(serial) == false) return;
 
 	auto& client = GetClient(serial);
-	if (client.IsLogin == false) return;
-
-	auto channel = FindChannelFromName(client.ChannelName);
-	if (channel == nullptr) return;
-
+	if (client.IsConnect == false) return;
+	
 	Packet_Chatting chatPacket;
 	chatPacket.Deserialize(in);
 
 	if (chatPacket.isWhisper == false)
 	{
+		//클라이언트 락 필요 -> 채널 이름 확인, 사용
+		std::unique_lock<std::mutex> ulClient(client.clientMutex);
+
+		auto channel = FindChannelFromName(client.ChannelName);
+		if (channel == nullptr) return;
+
 		std::unique_lock<std::mutex> ulChannel(channel->GetChannelLock());
 		BroadcastToChannel(channel, in.GetBuffer());
 	}
@@ -293,7 +323,7 @@ void Framework::Process_Chatting(Framework::SERIAL_TYPE serial, StreamReader& in
 void Framework::Process_Kick(Framework::SERIAL_TYPE serial, StreamReader& in)
 {
 	if (IsValidClientSerial(serial) == false) return;
-	if (clients[serial]->IsLogin == false) return;
+	if (clients[serial]->IsConnect == false) return;
 
 	Packet_Kick_User kickPacket;
 	kickPacket.Deserialize(in);
@@ -304,7 +334,10 @@ void Framework::Process_Kick(Framework::SERIAL_TYPE serial, StreamReader& in)
 		SendSystemMessage(serial, "***System*** 해당 유저는 접속중이 아닙니다.");
 		return;
 	}
+
 	auto& target = clients[targetSerial];
+	//target 락 필요 -> 채널 이름 확인, 사용
+	std::unique_lock<std::mutex> ulClient(target->clientMutex);
 
 	auto channel = FindChannelFromName(kickPacket.channelName);
 	if (channel == nullptr)
@@ -336,7 +369,9 @@ void Framework::Process_ChannelChange(Framework::SERIAL_TYPE serial, StreamReade
 	if (IsValidClientSerial(serial) == false) return;
 
 	auto& client = GetClient(serial);
-	if (client.IsLogin == false) return;
+	if (client.IsConnect == false) return;
+	//클라이언트 락 필요 -> 채널 확인, 이동
+	std::unique_lock<std::mutex> ulClient(client.clientMutex);
 
 	Packet_Channel_Enter enterPacket;
 	enterPacket.Deserialize(in);
@@ -388,15 +423,15 @@ Framework::SERIAL_TYPE Framework::GetRandomPublicChannelSerial() const
 {
 	static thread_local std::default_random_engine dre;
 	
-	const unsigned int publicChannelCount = publicChannels.size();	
+	size_t publicChannelCount = publicChannels.size();	
 	std::vector<unsigned int> slots(publicChannelCount);
 	std::iota(slots.begin(), slots.end(), 0);
 
 	for(auto i = 0; i < PUBLIC_BUSY_COUNT; ++i)
 	{
-		unsigned int toPickLength = publicChannelCount - i;
-		std::uniform_int_distribution<unsigned int> uid(0, toPickLength - 1);
-		unsigned int slot = uid(dre);
+		size_t toPickLength = publicChannelCount - i;
+		std::uniform_int_distribution<size_t> uid(0, toPickLength - 1);
+		size_t slot = uid(dre);
 
 		if (publicChannels[slots[slot]]->GetUserCount() < MAX_CHANNEL_USERS)
 			return slots[slot];
@@ -423,7 +458,23 @@ Framework::SERIAL_TYPE Framework::GetSerialForNewCustomChannel()
 	return customSerial;
 }
 
-void Framework::BroadcastToChannel(const std::shared_ptr<Channel>& channel, const void* packet) const
+Framework::SERIAL_TYPE Framework::GetSerialForUseOverlapExp()
+{
+	using namespace std::chrono;
+	SERIAL_TYPE overlapSerial = SERIAL_ERROR;
+
+	auto beginTime = high_resolution_clock::now();
+	while (false == validOverlapExpSerials.try_pop(overlapSerial))
+	{
+		auto elapsedTime = duration_cast<milliseconds>(high_resolution_clock::now() - beginTime);
+		if (GETOVERLAP_TIMEOUT_MILLISECONDS <= elapsedTime.count())
+			return SERIAL_ERROR;
+	}
+
+	return overlapSerial;
+}
+
+void Framework::BroadcastToChannel(const std::shared_ptr<Channel>& channel, const void* packet)
 {
 	if (channel == nullptr || packet == nullptr) return;
 
@@ -434,9 +485,7 @@ void Framework::BroadcastToChannel(const std::shared_ptr<Channel>& channel, cons
 void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, const std::shared_ptr<Channel>& channel)
 {
 	if (IsValidClientSerial(leaver) == false) return;
-
 	auto& client = GetClient(leaver);
-	if (client.IsLogin == false) return;
 
 	if (channel == nullptr)
 	{
@@ -448,9 +497,10 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, co
 	std::string channelName = channel->GetChannelName();
 
 	std::unique_lock<std::mutex> ulChannel(channel->GetChannelLock());
-	
+
+	//퇴장에 의해 방장이 변경될 수 있다.
 	std::string beforeMasterName = channel->GetChannelMaster();
-	channel->Exit(&client);	//퇴장에 의해 방장이 변경될 수 있다.
+	channel->Exit(&client);	
 
 	if (client.UserName == beforeMasterName)
 	{	//본 조건문이 진행되는 경우는 channel이 반드시 CustomChannel 이다.
@@ -466,7 +516,7 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, co
 			return; //후속처리(채널에 남은 유저들에게 정보 전송)가 필요하지 않아 return
 		}
 	}
-	
+
 	Packet_User_Leave leavePacket;
 	leavePacket.isKicked = isKicked;
 	leavePacket.userName = client.UserName;
@@ -475,9 +525,9 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, co
 	StreamWriter leaveStream(buf, sizeof(buf));
 	leavePacket.Serialize(leaveStream);
 
-	if (isKicked)
+	if (isKicked && client.IsConnect)
 		SendPacket(leaver, leaveStream.GetBuffer());
-		
+
 	BroadcastToChannel(channel, leaveStream.GetBuffer());
 
 	if (isMasterChanged)
@@ -496,7 +546,7 @@ void Framework::HandleUserLeave(Framework::SERIAL_TYPE leaver, bool isKicked, co
 void Framework::ConnectToRandomPublicChannel(Framework::SERIAL_TYPE serial)
 {
 	if (IsValidClientSerial(serial) == false
-		|| clients[serial]->IsLogin == false)
+		|| clients[serial]->IsConnect == false)
 		return;
 
 	CHANNEL_CONNECT isConnected = CHANNEL_CONNECT::FAIL_ARGUMENT;
@@ -522,7 +572,7 @@ Framework::CHANNEL_CONNECT
 		return CHANNEL_CONNECT::FAIL_ARGUMENT;
 
 	auto& client = GetClient(serial);
-	if (client.IsLogin == false) return CHANNEL_CONNECT::FAIL_ARGUMENT;
+	if (client.IsConnect == false) return CHANNEL_CONNECT::FAIL_ARGUMENT;
 
 	auto channel = FindChannelFromName(channelName);
 	if (channel == nullptr)
@@ -622,8 +672,14 @@ Framework::SERIAL_TYPE Framework::GetSerialForNewClient()
 			return SERIAL_ERROR;
 	}
 
-	clients[newSerial]->IsLogin = true;
 	return newSerial;
+}
+
+void Framework::ReturnUsedOverlapExp(SERIAL_TYPE serial)
+{
+	if (MAX_OVERLAPEXP_COUNT <= serial) return;
+
+	validOverlapExpSerials.push(serial);
 }
 
 void Framework::AddNewCustomChannel(const std::string& channelName)
@@ -639,9 +695,8 @@ void Framework::AddNewCustomChannel(const std::string& channelName)
 
 	auto iterName = usedCustomChannelNames.find(channelName);
 	if (iterName != usedCustomChannelNames.cend())
-	{
+	{	//다른 유저가 먼저 채널 생성, 시리얼 반환
 		validCustomChannelSerials.push(customSerial);
-		std::cout << "AddNewCustomChannel() error - duplicated channelName\n";
 		return;
 	}
 
@@ -666,7 +721,7 @@ std::vector<std::string>
 	return customs;
 }
 
-int	Framework::DebugUserCount(bool doLock)
+size_t Framework::DebugUserCount(bool doLock)
 {
 	std::unique_lock<std::mutex> ulUser(clientNameLock, std::defer_lock);
 	if (doLock) ulUser.lock();
@@ -738,6 +793,7 @@ namespace
 			//새 클라이언트 초기화, 등록
 			Client& client = framework.GetClient(newSerial);
 
+			client.IsConnect = true;
 			client.Serial = newSerial;
 			client.ClientSocket = newClientSocket;
 			client.RecvOverlap.Operation = OPERATION_RECV;
@@ -765,7 +821,7 @@ namespace
 		while (false == framework.IsShutDown())
 		{
 			DWORD iosize;
-			DWORD serial;
+			unsigned long long serial;
 			Overlap_Exp* overlapExp;
 
 			BOOL result = GetQueuedCompletionStatus(framework.GetIocpHandle(),
@@ -820,14 +876,18 @@ namespace
 
 						client.PreviousCursor -= client.PacketSize;
 						client.PacketSize = 0;
+
+						if (remained > 0
+							&& (client.PreviousCursor + remained) <= sizeof(client.PacketBuff))
+						{
+							std::memcpy(client.PacketBuff + client.PreviousCursor, ioBufCursor, remained);
+							client.PreviousCursor += remained;
+							remained = 0;
+						}
 					}
 				} while (client.PacketSize == 0);
 
-				if (remained > 0)
-				{
-					std::memcpy(client.PacketBuff + client.PreviousCursor, ioBufCursor, remained);
-					client.PreviousCursor += remained;
-				}
+				
 
 				DWORD flags = 0;
 				::WSARecv(client.ClientSocket,
@@ -835,8 +895,9 @@ namespace
 					&client.RecvOverlap.Original_Overlap, NULL);
 			}
 			else if (OPERATION_SEND == overlapExp->Operation)
-			{	//전송완료, 메모리 해제
-				delete overlapExp;
+			{	//전송완료, overlap_exp 반환
+				//delete overlapExp;
+				framework.ReturnUsedOverlapExp(overlapExp->Serial);
 			}
 			else
 			{

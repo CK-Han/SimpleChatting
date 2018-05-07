@@ -1,6 +1,7 @@
 #pragma once
 #include <WinSock2.h>
 #include <string>
+#include <mutex>
 #include "../Common/protocol.h"
 
 enum Overlap_Operation {
@@ -12,27 +13,29 @@ struct Overlap_Exp
 {
 	::WSAOVERLAPPED Original_Overlap;
 	int Operation;
+	size_t Serial;
 	WSABUF WsaBuf;
 	unsigned char Iocp_Buffer[Packet_Base::MAX_BUF_SIZE];
 };
 
 struct Client
 {
-	int					Serial;
+	size_t				Serial;
 	SOCKET				ClientSocket;
-	bool				IsLogin;
+	bool				IsConnect;
 	Overlap_Exp			RecvOverlap;
 	int					PacketSize;
 	int					PreviousCursor;
 	unsigned char		PacketBuff[Packet_Base::MAX_BUF_SIZE];
 
+	std::mutex			clientMutex;
 	std::string			UserName;
 	std::string			ChannelName;
 
 	Client()
-		: Serial(-1)
+		: Serial((std::numeric_limits<size_t>::max)())
 		, ClientSocket(INVALID_SOCKET)
-		, IsLogin(false)
+		, IsConnect(false)
 		, PacketSize(0)
 		, PreviousCursor(0)
 	{

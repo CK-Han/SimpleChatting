@@ -77,7 +77,7 @@ bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 
 /**
 	@brief		데이터 Recv하여 패킷 조립, 처리함수 호출
-	@detailis	AsyncSelect Read 이벤트 발생시 호출되어 blocking recv 진행
+	@details	AsyncSelect Read 이벤트 발생시 호출되어 blocking recv 진행
 				이전에 io가 덜 되어 조립하지 못한 경우에 대한 처리
 */
 void Socket::ReadPacket(SOCKET sock)
@@ -130,7 +130,6 @@ void Socket::ReadPacket(SOCKET sock)
 				savedPacketSize += remainedIoByte;
 				remainedIoByte = 0;
 			}
-
 		}
 	} while (inPacketSize == 0);
 }

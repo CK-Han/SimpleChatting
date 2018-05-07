@@ -137,7 +137,7 @@ bool Framework::Run(HWND hWnd, HINSTANCE instance)
 		, rect.left + BLANK, rect.bottom - BLANK - CHAT_HEIGHT, CHAT_WIDTH, CHAT_HEIGHT
 		, mainWindow, 0, mainInstance, NULL);
 
-	oldInputProc = (WNDPROC)SetWindowLong(editInput, GWL_WNDPROC, (LONG)EditSubProc);
+	oldInputProc = (WNDPROC)SetWindowLongPtr(editInput, GWLP_WNDPROC, (LONG_PTR)EditSubProc);
 
 	listLog = ::CreateWindow("listbox", NULL, WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOVSCROLL | WS_VSCROLL | LBS_DISABLENOSCROLL
 		, rect.left + BLANK, rect.top + BLANK, CHAT_WIDTH, LOG_HEIGHT
@@ -347,7 +347,7 @@ bool Framework::IsValidUserName(const std::string& id) const
 */
 void Framework::SeekLastAddedCursor(HWND listBox)
 {
-	int count = ::SendMessage(listBox, LB_GETCOUNT, 0, 0);
+	LRESULT count = ::SendMessage(listBox, LB_GETCOUNT, 0, 0);
 	::SendMessage(listBox, LB_SETCURSEL, WPARAM(count - 1), 0);
 }
 
@@ -482,6 +482,7 @@ void Framework::Process_UserLeave(StreamReader& in)
 		{
 			sysMsg += " 방장에 의해 강퇴당했습니다.";
 			userChannel.clear(); //void 채널
+			::SetWindowText(editChannelName, "Channel Disonnected");
 			::SendMessage(listUsers, LB_RESETCONTENT, 0, 0);
 		}
 		else
@@ -491,15 +492,13 @@ void Framework::Process_UserLeave(StreamReader& in)
 		SeekLastAddedCursor(listLog);
 	}
 
-	int slot = ::SendMessage(listUsers, LB_FINDSTRINGEXACT, 0, LPARAM(packet.userName.c_str()));
-	if(slot == LB_ERR)
-		slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(packet.userName.c_str()));
+	LRESULT slot = ::SendMessage(listUsers, LB_FINDSTRINGEXACT, 0, LPARAM(packet.userName.c_str()));
 
 	if (slot != LB_ERR)
 		::SendMessage(listUsers, LB_DELETESTRING, WPARAM(slot), 0);
 	else
 	{
-		sysMsg += "채널 오류, 채널에 다시 접속해주시기 바랍니다.";
+		sysMsg = "***System*** 채널 오류, 채널에 다시 접속해주시기 바랍니다.";
 		::SendMessage(listLog, LB_ADDSTRING, 0, LPARAM(sysMsg.c_str()));
 		SeekLastAddedCursor(listLog);
 	}
@@ -535,7 +534,7 @@ void Framework::Process_NewMaster(StreamReader& in)
 		return;
 
 	currentChannelMaster = packet.master;
-	int slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(packet.master.c_str()));
+	LRESULT slot = ::SendMessage(listUsers, LB_FINDSTRINGEXACT, 0, LPARAM(packet.master.c_str()));
 
 	if (slot != -1)
 	{

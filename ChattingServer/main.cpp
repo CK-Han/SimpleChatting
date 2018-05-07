@@ -1,12 +1,14 @@
 #include "Framework.h"
 #include <iostream>
 #include <iomanip>
+
 using namespace std;
 
 void main()
 {
 	//initialize
-	Framework::GetInstance();
+	if (Framework::GetInstance().IsShutDown())
+		return;
 
 	string comandExplain = "input 'x' to close server, 'c' -> user count\n"
 							"'h' -> custom channel count, 'H' -> custom channel list\n";
