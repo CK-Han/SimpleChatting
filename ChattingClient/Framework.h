@@ -8,11 +8,9 @@
 
 /**
 	@class		Framework
-	@brief		채팅 클라이언트 메인 프레임워크
+	@brief		채팅 클라이언트 메인 프레임워크, 싱글톤이다.
 	@details	button, edit control, list box를 사용해 간단히 만든 채팅 클라이언트
-	@author		cgHan
-	@date		2018/05/05
-	@version	0.0.1
+				EditBox의 사용자 입력 처리를 위해 서브클래싱을 진행한다.
 */
 class Framework
 {

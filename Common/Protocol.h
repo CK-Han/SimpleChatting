@@ -9,32 +9,19 @@ class StreamWriter;
 class StreamReader;
 
 /**
-	@class Serializble
-	@brief		통신을 위한 직렬화 인터페이스
-	@details	
-	@author		cgHan
-	@date		2018/05/05
-	@version	0.0.1
-*/
-class Serializable
-{
-public:
-	virtual void Serialize(StreamWriter&) const = 0;
-	virtual void Deserialize(StreamReader&) = 0;
-
-	virtual ~Serializable() {}
-};
-
-/**
 	@class Packet_Base
 	@brief		통신을 위해 기본적인 내용이 정의된 패킷 베이스 클래스
-	@details	상수 나열, 별칭을 통한 기본 타입설정, 패킷 타입 관리, 공통적인 직렬화 관련 동작 정의
-	@author		cgHan
-	@date		2018/05/05
-	@version	0.0.1
+	@details	상수 나열 - 통신에 필요한 상수들을 정의한다. 
+				별칭 - 패킷들이 공통적으로 사용할 기본 타입설정
+				패킷 타입 관리 - 정의된 Hash를 사용, 해시값으로 타입을 구분하도록 한다.
+				공통적인 직렬화 관련 동작 정의 - Begin, End 및 Stream에 정의되지 않은 동작 (컨테이너들)
+
+	@warning	StreamWriter 및 Reader를 다루는 만큼, 예외에 신경써서 작업해야한다.
+				해시 충돌을 염두해두어야 한다.
+
+	@todo		예외 상황 처리에 대해 생각해야한다. 현재는 단순히 std::cerr에 기록한다.
 */
 class Packet_Base
-	: public Serializable
 {
 public:
 	using ValueType = unsigned short;
@@ -56,6 +43,8 @@ protected:
 public:
 	virtual void Serialize(StreamWriter&) const = 0;
 	virtual void Deserialize(StreamReader&) = 0;
+
+	virtual ~Packet_Base() {}
 
 
 protected:
@@ -123,6 +112,8 @@ struct Packet_Login
 /**
 	@brief		클라이언트 -> 서버 : 리스트 요청, 데이터를 담지 않음
 				서버 -> 클라이언트 : 리스트 전달, 커스텀채널은 개수만 확인
+
+	@warning	데이터를 담지 않더라도, 멤버변수 초기화를 누락하지 않아야 한다.
 */
 struct Packet_Channel_List
 	: public Packet_Base
@@ -139,6 +130,10 @@ struct Packet_Channel_List
 /**
 	@brief		클라이언트 -> 서버 : 채널 연결 요청
 				서버 -> 클라이언트 : 채널 연결 확인, 방장이 누구인지 알림
+
+	@warning	클라 -> 서버의 경우더라도 멤버변수 초기화를 누락하지 않도록 주의한다.
+				즉, StringType의 기본생성자를 명시적으로라도 호출하도록 한다. 
+				(현재는 std::string이라 누락시에도 문제는 없다.)
 */
 struct Packet_Channel_Enter
 	: public Packet_Base

@@ -6,11 +6,8 @@
 
 /**
 	@class		Socket
-	@brief		WSAAsyncSelect로 작성된 클라이언트용 Server-Client 모델 통신 클래스
+	@brief		WSAAsyncSelect로 작성된 클라이언트용 통신 클래스
 	@details	
-	@author		cgHan
-	@date		2018/05/05
-	@version	0.0.1
 */
 class Socket
 {

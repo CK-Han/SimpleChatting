@@ -11,6 +11,9 @@ namespace
 
 thread_local std::default_random_engine DummyHandler::RANDOM_ENGINE;
 
+/**
+	@brief		멤버변수 초기화, iocp 초기화 및 윈속 초기화를 진행한다.
+*/
 DummyHandler::DummyHandler()
 	: hIocp(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0))
 	, isInitialized(false)
@@ -42,8 +45,8 @@ void DummyHandler::Close()
 		if (dummy.first.isLogin)
 		{
 			dummy.first.Close();
+			::Sleep(1);
 		}
-		::Sleep(1);
 	}
 	::Sleep(2000);
 
@@ -161,7 +164,7 @@ bool DummyHandler::AddDummy(unsigned int count
 		::ZeroMemory(&recvOverlap, sizeof(recvOverlap));
 		recvOverlap.WsaBuf.len = sizeof(recvOverlap.Iocp_Buffer);
 		recvOverlap.WsaBuf.buf = reinterpret_cast<CHAR*>(recvOverlap.Iocp_Buffer);
-		recvOverlap.Operation = OPERATION_RECV;
+		recvOverlap.Operation = Overlap_Exp::OPERATION_RECV;
 		DWORD flags = 0;
 		int ret = ::WSARecv(dummy.GetSocket(),
 			&recvOverlap.WsaBuf, 1, NULL, &flags,
@@ -190,7 +193,7 @@ bool DummyHandler::AddDummy(unsigned int count
 
 
 /**
-	@brief		더미 연결 종료, 종료되지 않은 가장 앞 순번부터 진행
+	@brief		count만큼 더미 연결 종료, 종료되지 않은 가장 앞 순번부터 진행한다.
 */
 bool DummyHandler::CloseDummy(unsigned int count)
 {
@@ -214,6 +217,12 @@ bool DummyHandler::CloseDummy(unsigned int count)
 	return true;
 }
 
+/**
+	@brief		Send를 위해 사용가능한 OverlapExp의 인덱스를 얻는다.
+
+	@return		[0, MAX_OVERLAPEXP_COUNT) -> 사용가능한 인덱스
+				SERIAL_ERROR -> try_pop이 지정한 timeout동안 성공하지 못한 경우
+*/
 DummyHandler::SERIAL_TYPE DummyHandler::GetSerialForUseOverlapExp()
 {
 	using namespace std::chrono;
@@ -230,6 +239,9 @@ DummyHandler::SERIAL_TYPE DummyHandler::GetSerialForUseOverlapExp()
 	return overlapSerial;
 }
 
+/**
+	@brief		전송(사용)완료된 OverlapExp를 반환한다.
+*/
 void DummyHandler::ReturnUsedOverlapExp(SERIAL_TYPE serial)
 {
 	if (MAX_OVERLAPEXP_COUNT <= serial) return;
@@ -240,36 +252,19 @@ void DummyHandler::ReturnUsedOverlapExp(SERIAL_TYPE serial)
 //Packet Handling
 
 /**
-	@brief		Serialize된 패킷 서버에 전송
-	@details	Overlap_Exp 구조체 생성, 초기화, overlap WSASend로 전송 
+	@brief		모든 Send 요청에 대한 최종 단계 - WsaSend 호출
+	@details	전송을 위한 Overlap 확장 구조체는 concurrent queue로부터 시리얼을 받아서 사용한다.
+				
+	@param serial 보내고자 하는 클라이언트 시리얼
+	@param packet 보내고자 하는 패킷, Serialize 되어있다.
+
+	@warning	concurrent queue의 try_pop이 지연되어 timeout 될 수 있다.
 */
 void DummyHandler::SendPacket(SERIAL_TYPE serial, const void* packet)
 {
 	if (IsValidSerial(serial) == false
 		|| packet == nullptr)
 		return;
-
-	/*
-	Overlap_Exp* overlapExp = nullptr;
-	try
-	{
-		overlapExp = new Overlap_Exp;
-	}
-	catch (const std::bad_alloc&)
-	{
-		std::cout << "SendPacket() - new exception\n";
-		return;
-	}
-
-	::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
-	overlapExp->Operation = OPERATION_SEND;
-	overlapExp->WsaBuf.buf = reinterpret_cast<CHAR *>(overlapExp->Iocp_Buffer);
-	overlapExp->WsaBuf.len = GetPacketSize(packet);
-	memcpy(overlapExp->Iocp_Buffer, packet, overlapExp->WsaBuf.len);
-
-	int ret = ::WSASend(dummies[serial].first.GetSocket(), &overlapExp->WsaBuf, 1, NULL, 0,
-		&overlapExp->Original_Overlap, NULL);
-	*/
 
 	SERIAL_TYPE overlapSerial = GetSerialForUseOverlapExp();
 	if (SERIAL_ERROR == overlapSerial)
@@ -280,7 +275,7 @@ void DummyHandler::SendPacket(SERIAL_TYPE serial, const void* packet)
 
 	::ZeroMemory(&(*sendOverlapExps[overlapSerial]), sizeof(Overlap_Exp));
 	sendOverlapExps[overlapSerial]->Serial = overlapSerial;
-	sendOverlapExps[overlapSerial]->Operation = OPERATION_SEND;
+	sendOverlapExps[overlapSerial]->Operation = Overlap_Exp::OPERATION_SEND;
 	sendOverlapExps[overlapSerial]->WsaBuf.buf = reinterpret_cast<CHAR *>(sendOverlapExps[overlapSerial]->Iocp_Buffer);
 	sendOverlapExps[overlapSerial]->WsaBuf.len = GetPacketSize(packet);
 	memcpy(sendOverlapExps[overlapSerial]->Iocp_Buffer, packet, sendOverlapExps[overlapSerial]->WsaBuf.len);
@@ -298,8 +293,11 @@ void DummyHandler::SendPacket(SERIAL_TYPE serial, const void* packet)
 }
 
 /**
-	@brief		패킷 타입을 통해 등록된 프로시저 실행
-	@warning	처리해야할 프로시저만 등록되어있으며, type이 정의되지 않은 값이더라도 그에 대한 처리를 진행하지 않음
+	@brief		패킷 타입을 확인하여 그에 맞는 등록된 프로시저 실행
+	@warning	처리해야할 프로시저만 등록되어있으며, type이 정의되지 않은 값이더라도
+				그에 대한 처리(ex. 오류 출력)를 진행하지 않음
+
+	@throw StreamReadUnderflow - 프로시저 내 패킷 Deserialize에서 발생할 수 있음
 */
 void DummyHandler::ProcessPacket(SERIAL_TYPE serial, const void* packet, int size)
 {
@@ -321,6 +319,9 @@ void DummyHandler::ProcessPacket(SERIAL_TYPE serial, const void* packet, int siz
 
 /**
 	@brief		id 생성 성공, 타이머에 랜덤 패킷 발송을 등록한다.
+	@details	더미를 수정하므로, dummyLock을 진행한다.
+
+	@throw StreamReadUnderflow - Packet_Login::Deserialize()에서 발생할 수 있음
 */
 void DummyHandler::Process_Login(SERIAL_TYPE serial, StreamReader& in)
 {
@@ -337,6 +338,12 @@ void DummyHandler::Process_Login(SERIAL_TYPE serial, StreamReader& in)
 	AddRandomPacketEvent(serial);
 }
 
+/**
+	@brief		채널에 연결되었음을 확인, 처리한다.
+	@details	더미를 수정하므로, dummyLock을 진행한다.
+
+	@throw StreamReadUnderflow - Packet_Channel_Enter::Deserialize()에서 발생할 수 있음
+*/
 void DummyHandler::Process_ChannelEnter(SERIAL_TYPE serial, StreamReader& in)
 {
 	if (IsValidSerial(serial) == false)	return;
@@ -350,7 +357,9 @@ void DummyHandler::Process_ChannelEnter(SERIAL_TYPE serial, StreamReader& in)
 
 /**
 	@brief		더미 자신이 강퇴당했을 때에 처리를 진행한다.
-	@details	서버에서 강퇴에 의해 다른 채널로 연결되기 전 까지는 채널을 void로 설정한다.
+	@details	서버에서 강퇴에 의해 다른 채널로 연결되기 전 까지는 내 채널을 void로 설정한다.
+
+	@throw StreamReadUnderflow - Packet_User_Leave::Deserialize()에서 발생할 수 있음
 */
 void DummyHandler::Process_UserLeave(SERIAL_TYPE serial, StreamReader& in)
 {
@@ -372,6 +381,7 @@ void DummyHandler::Process_UserLeave(SERIAL_TYPE serial, StreamReader& in)
 
 /**
 	@brief		함수 내 설정한 확률에 따라 서버에 임의의 패킷을 전송한 뒤 다시 타이머에 등록한다.
+	@details	std::default_random_engine 및 std::uniform_real_distribution이 사용된다.
 */
 void DummyHandler::SendRandomPacket(SERIAL_TYPE serial)
 {
@@ -403,8 +413,8 @@ void DummyHandler::SendRandomPacket(SERIAL_TYPE serial)
 }
 
 /**
-	@brief		타이머 큐에 해당 더미가 다시 임의의 패킷을 발송하도록 등록한다.
-	@details	클래스 내 PACKET_DELAY_TIME를 사용하여 등록
+	@brief		타이머 큐에 해당 더미가 일정 시간 뒤 임의의 패킷을 발송하도록 등록한다.
+	@details	timer thread와의 동기화를 위해 timerLock을 진행한다.
 */
 void DummyHandler::AddRandomPacketEvent(SERIAL_TYPE serial)
 {
@@ -413,14 +423,19 @@ void DummyHandler::AddRandomPacketEvent(SERIAL_TYPE serial)
 
 	Event_Info eventInfo;
 	eventInfo.Serial = static_cast<int>(serial);
-	eventInfo.Event_Type = OPERATION_RANDPACKET;
+	eventInfo.Event_Type = Overlap_Exp::OPERATION_RANDPACKET;
 	
 	std::unique_lock<std::mutex> ulTimer(timerLock);
 	eventInfo.Wakeup_Time = ::GetTickCount() + PACKET_DELAY_TIME;
 	timerQueue.push(eventInfo);
 }
 
+/**
+	@brief		귓속말 요청을 전송한다. 대상은 접속중인 임의의 다른 더미이다.
+	@details	임의 대상을 못찾거나 본인인 경우에는 발송하지 않는다.
 
+	@see		DummyHandler::GetRandomUser() const;
+*/
 void DummyHandler::RequestWhisper(SERIAL_TYPE serial)
 {
 	if (IsValidSerial(serial) == false
@@ -448,6 +463,11 @@ void DummyHandler::RequestWhisper(SERIAL_TYPE serial)
 	SendPacket(serial, chatStream.GetBuffer());
 }
 
+/**
+	@brief		서버 내의 채널리스트 및 커스텀채널 개수 정보를 요청한다
+	
+	@warning	client는 사용하지 않는 변수도 초기화를 누락하지 않도록 한다.
+*/
 void DummyHandler::RequestChannelList(SERIAL_TYPE serial)
 {
 	if (IsValidSerial(serial) == false
@@ -464,6 +484,12 @@ void DummyHandler::RequestChannelList(SERIAL_TYPE serial)
 	SendPacket(serial, listStream.GetBuffer());
 }
 
+/**
+	@brief		채널 변경을 요청한다. 임의의 채널 이름을 받아 요청한다.
+	@details	채널 이름을 얻지 못했거나 본인 채널과 동일하면 요청하지 않는다.
+
+	@see		DummyHandler::GetRandomChannel() const;
+*/
 void DummyHandler::RequestChannelChange(SERIAL_TYPE serial)
 {
 	if (IsValidSerial(serial) == false
@@ -487,6 +513,9 @@ void DummyHandler::RequestChannelChange(SERIAL_TYPE serial)
 
 /**
 	@brief		강퇴요청 패킷을 전송한다. 대상이 채널이 다르거나 본인이 방장이 아니라도 진행된다.
+	@details	임의 유저를 얻지 못했거나 본인이면 진행하지 않는다.
+
+	@see		DummyHandler::GetRandomUser() const;
 */
 void DummyHandler::RequestKick(SERIAL_TYPE serial)
 {
@@ -512,6 +541,9 @@ void DummyHandler::RequestKick(SERIAL_TYPE serial)
 	SendPacket(serial, kickStream.GetBuffer());
 }
 
+/**
+	@brief		채널 채팅요청을 전송한다. void채널이면 전송하지 않는다.
+*/
 void DummyHandler::RequestChatting(SERIAL_TYPE serial)
 {
 	if (IsValidSerial(serial) == false
@@ -541,8 +573,11 @@ void DummyHandler::RequestChatting(SERIAL_TYPE serial)
 
 /**
 	@brief		connect 되어있는 임의의 더미 중 하나의 이름을 얻는다.
+
 	@return		더미가 로그인되어있다면 그 더미의 userName
 				connect이나 login되지 않았다면 empty string 반환
+
+	@warning	'임의' 이므로, 요청한 본인의 이름을 받을 수도 있다.
 */
 std::string DummyHandler::GetRandomUser() const
 {
@@ -558,8 +593,11 @@ std::string DummyHandler::GetRandomUser() const
 
 /**
 	@brief		connect 되어있는 임의의 더미 중 하나가 연결된 채널 이름 or 공개채널 or 임의의 채널 이름을 얻는다.
+	
 	@return		위 세 경우 중 하나의 채널 이름값을 얻는다.
 				임의의 더미가 login 상태가 아니라면 empty string을 반환
+
+	@warning	'임의'이므로 반환의 결과가 본인 채널과 동일할 수 있다.
 */
 std::string DummyHandler::GetRandomChannel() const
 {
@@ -605,6 +643,18 @@ namespace
 {
 	/**
 		@brief		워커스레드 동작함수, 패킷 조립 및 처리함수 호출, 자원 반환 진행
+		@details	iocp로 동작한다. overlap 구조체를 확장하여 사용하며(Overlap_Exp), key는 클라이언트 시리얼이다.
+					Overlap_Exp의 OPERATION 열거형으로 이벤트를 구분하여 처리한다.
+					recv는 패킷을 조립하고, 해당 프로시저를 호출한 뒤, 다시 recv를 등록한다.
+					send는 사용했던 Overlap_Exp를 반환하는 작업을 진행한다.
+
+					랜덤패킷의 경우, send가 완료되어 반환된 이후에 다시 랜덤패킷 요청을 진행하므로
+					Overlap 컨커런트 큐가 비는 상황은 발생하지 않는다.
+
+					전체 종료 요청처리를 위해 GQCS_TIMEOUT_MILLISECONDS 을 둔다.
+
+		@todo		패킷 조립코드는 더 좋고 간결한 방법을 찾아낼때마다 적용하고 테스트해야 한다.
+		@author		cgHan
 	*/
 	void WorkerThreadStart()
 	{
@@ -617,13 +667,17 @@ namespace
 			Overlap_Exp* overlapExp;
 
 			BOOL result = GetQueuedCompletionStatus(handler->GetIocpHandle(),
-				&iosize, &serial, reinterpret_cast<LPOVERLAPPED*>(&overlapExp), INFINITE);
+				&iosize, &serial, reinterpret_cast<LPOVERLAPPED*>(&overlapExp), DummyHandler::GQCS_TIMEOUT_MILLISECONDS);
 
-			if (result == false
-				&& overlapExp->Original_Overlap.Pointer != nullptr)
+			if (result == false)
 			{
-				std::cout << "WorkerThreadStart() - GetQueuedCompletionStatus error\n";
-				return;
+				if (overlapExp == nullptr)
+					continue; //timeout
+				else
+				{
+					std::cout << "WorkerThreadStart() - GetQueuedCompletionStatus error\n";
+					return;
+				}
 			}
 			if (DummyHandler::GetInstance()->IsValidSerial(serial) == false)
 			{
@@ -639,44 +693,44 @@ namespace
 			Dummy& dummy = handler->GetDummies()[serial].first;
 			Overlap_Info& overlapInfo = handler->GetDummies()[serial].second;
 
-			if (OPERATION_RECV == overlapExp->Operation)
+			if (Overlap_Exp::OPERATION_RECV == overlapExp->Operation)
 			{
 				unsigned char* ioPtr = overlapExp->Iocp_Buffer;
 				int remained = 0;
 
-				if ((overlapInfo.PreviousCursor + iosize) > Packet_Base::MAX_BUF_SIZE)
+				if ((overlapInfo.SavedPacketSize + iosize) > Packet_Base::MAX_BUF_SIZE)
 				{
-					int empty = Packet_Base::MAX_BUF_SIZE - overlapInfo.PreviousCursor;
-					std::memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousCursor, ioPtr, empty);
+					int empty = Packet_Base::MAX_BUF_SIZE - overlapInfo.SavedPacketSize;
+					std::memcpy(overlapInfo.PacketBuff + overlapInfo.SavedPacketSize, ioPtr, empty);
 
 					remained = iosize - empty;
 					ioPtr += empty;
-					overlapInfo.PreviousCursor += empty;
+					overlapInfo.SavedPacketSize += empty;
 				}
 				else
 				{
-					std::memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousCursor, ioPtr, iosize);
-					overlapInfo.PreviousCursor += iosize;
+					std::memcpy(overlapInfo.PacketBuff + overlapInfo.SavedPacketSize, ioPtr, iosize);
+					overlapInfo.SavedPacketSize += iosize;
 				}
 
 				do
 				{
 					overlapInfo.PacketSize = GetPacketSize(overlapInfo.PacketBuff);
 
-					if (overlapInfo.PacketSize <= overlapInfo.PreviousCursor)
+					if (overlapInfo.PacketSize <= overlapInfo.SavedPacketSize)
 					{	//조립가능
 						handler->ProcessPacket(serial, overlapInfo.PacketBuff, overlapInfo.PacketSize);
 						std::memmove(overlapInfo.PacketBuff, overlapInfo.PacketBuff + overlapInfo.PacketSize
-							, overlapInfo.PreviousCursor - overlapInfo.PacketSize);
+							, overlapInfo.SavedPacketSize - overlapInfo.PacketSize);
 
-						overlapInfo.PreviousCursor -= overlapInfo.PacketSize;
+						overlapInfo.SavedPacketSize -= overlapInfo.PacketSize;
 						overlapInfo.PacketSize = 0;
 
 						if (remained > 0
-							&& (overlapInfo.PreviousCursor + remained) <= sizeof(overlapInfo.PacketBuff))
+							&& (overlapInfo.SavedPacketSize + remained) <= sizeof(overlapInfo.PacketBuff))
 						{
-							std::memcpy(overlapInfo.PacketBuff + overlapInfo.PreviousCursor, ioPtr, remained);
-							overlapInfo.PreviousCursor += remained;
+							std::memcpy(overlapInfo.PacketBuff + overlapInfo.SavedPacketSize, ioPtr, remained);
+							overlapInfo.SavedPacketSize += remained;
 							remained = 0;
 						}
 					}
@@ -693,14 +747,12 @@ namespace
 						std::cout << "WorkerThreadStart() - WSARecv " << "error code : " << error_no << std::endl;
 				}
 			}
-			else if (OPERATION_SEND == overlapExp->Operation)
+			else if (Overlap_Exp::OPERATION_SEND == overlapExp->Operation)
 			{	
-				//delete overlapExp;
 				handler->ReturnUsedOverlapExp(overlapExp->Serial);
 			}
-			else if (OPERATION_RANDPACKET == overlapExp->Operation)
+			else if (Overlap_Exp::OPERATION_RANDPACKET == overlapExp->Operation)
 			{
-				//delete overlapExp;
 				handler->ReturnUsedOverlapExp(overlapExp->Serial);
 				//랜덤패킷 발송, 이 함수내에서 다시 타이머 등록한다.
 				handler->SendRandomPacket(serial);
@@ -713,7 +765,9 @@ namespace
 	}
 
 	/**
-		@brief		timer_queue를 사용하여 랜덤패킷 전송 진행
+		@brief		timer_queue를 사용하여 랜덤패킷 발송을 요청한다.
+		@details	DummyHandler와 동기화를 위해 TimerLock을 사용한다.
+					priority_queue로, Wakeup_Time이 가장 이른 이벤트가 먼저 호출된다.
 	*/
 	void TimerThreadStart()
 	{
@@ -735,7 +789,6 @@ namespace
 				timerQueue.pop();
 				ul.unlock();
 
-
 				auto overlapSerial = handler->GetSerialForUseOverlapExp();
 				if (DummyHandler::SERIAL_ERROR == overlapSerial)
 				{
@@ -746,24 +799,10 @@ namespace
 				auto& overlapExp = handler->GetSendOverlapExp(overlapSerial);
 				::ZeroMemory(&overlapExp, sizeof(overlapExp));
 				overlapExp.Serial = overlapSerial;
-				overlapExp.Operation = OPERATION_RANDPACKET;
+				overlapExp.Operation = Overlap_Exp::OPERATION_RANDPACKET;
 				PostQueuedCompletionStatus(handler->GetIocpHandle(), 1,
 					ev.Serial, &overlapExp.Original_Overlap);
 				
-				/*
-				try
-				{
-					Overlap_Exp* overlapExp = new Overlap_Exp;
-					::ZeroMemory(overlapExp, sizeof(Overlap_Exp));
-					overlapExp->Operation = OPERATION_RANDPACKET;
-					PostQueuedCompletionStatus(handler->GetIocpHandle(), 1,
-						ev.Serial, &overlapExp->Original_Overlap);
-				}
-				catch (const std::bad_alloc&)
-				{
-					std::cout << "TimerThreadStart() - new exception\n";
-				}
-				*/
 				ul.lock();
 			}
 		}

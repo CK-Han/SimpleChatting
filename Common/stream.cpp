@@ -2,6 +2,8 @@
 
 
 /**
+	@brief	StreamWriter를 초기화한다 buf의 nullptr 검사를 진행한다.
+
 	@throw	StreamBase::InvalidStreamArgument : buf가 nullptr일 시
 */
 StreamWriter::StreamWriter(void* buf, SizeType size)
@@ -70,7 +72,7 @@ StreamWriter& StreamWriter::operator<<(unsigned long long src)
 
 
 /**
-	@brief		스트림에 날 데이터를 복사한다.
+	@brief		스트림에 raw data를 size만큼 복사한다.
 	@throw		InvalidStreamArgument : src가 nullptr
 				StreamWriteOverflow : 복사시 오버플로우 발생한 경우
 */
@@ -102,7 +104,8 @@ void StreamWriter::OverwriteRawData(SizeType begin, const void* src, SizeType si
 
 /**
 	@brief		버퍼에 데이터 추가
-	@details	cursor를 통해 버퍼의 끝을 지정한다.
+	@details	cursor를 통해 버퍼의 끝을 지정하여 붙여나간다.
+
 	@throw		InvalidStreamArgument : src가 nullptr
 				StreamWriteOverflow : 복사시 오버플로우 발생한 경우
 */
@@ -122,6 +125,8 @@ void StreamWriter::Append(const void* src, SizeType size)
 /////////////////////////////////////////////////////////////////////////////////////////////
 
 /**
+	@brief StreamReader를 초기화한다. buf의 nullptr 검사 진행
+
 	@throw	StreamBase::InvalidStreamArgument : buf가 nullptr일 시
 */
 StreamReader::StreamReader(const void* buf, SizeType size)
@@ -190,7 +195,8 @@ StreamReader& StreamReader::operator>>(unsigned long long& dst)
 
 
 /**
-	@brief		지정된 크기만큼 버퍼로부터 데이터를 읽는다.
+	@brief		지정된 크기만큼 버퍼로부터 데이터를 읽어 dst에 복사한다.
+
 	@throw		InvalidStreamArgument : dst가 nullptr
 				StreamReadUnderflow : 읽을때 언더플로우 발생한 경우
 */
@@ -203,8 +209,9 @@ void StreamReader::ReadRawData(void* dst, SizeType size)
 }
 
 /**
-	@brief		버퍼로부터 데이터 파싱
+	@brief		버퍼로부터 사이즈만큼 데이터 파싱
 	@details	cursor를 통해 지금까지 읽은 위치의 끝을 지정한다.
+
 	@throw		InvalidStreamArgument : dst가 nullptr
 				StreamReadUnderflow : 읽을때 언더플로우 발생한 경우
 */

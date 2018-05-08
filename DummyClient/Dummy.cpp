@@ -14,8 +14,9 @@ Dummy::~Dummy()
 ////////////////////////////////////////////////////////////////////////////
 
 /**
-	@brief		소켓 생성, 서버 connect
+	@brief		소켓 생성, 서버에 connect를 요청한다.
 	@details	overlapped socket으로 생성한다.
+
 	@return		소켓 생성 및 connect 성공시 true
 
 	@warning	ip가 날 포인터이므로 사용에 주의 (invalid할 시 connect 에러일 것이다.)

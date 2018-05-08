@@ -4,7 +4,7 @@
 
 
 /**
-	@brief		멤버변수 초기화, WSABuf 설정
+	@brief		멤버변수 초기화, buffer clear 및 WSABuf 설정을 진행한다.
 */
 Socket::Socket()
 	: hWnd(NULL)
@@ -29,10 +29,11 @@ Socket::~Socket()
 
 
 /**
-	@brief		소켓생성 - Connect - AsyncSelect 등록 진행
+	@brief		소켓생성 - connect - AsyncSelect 순으로 진행한다.
 	@return		모두 성공시에 true 반환
-				윈도우 핸들 초기화 이후에 실패시에는 메시지박스 출력
-	@warning	ip가 날 포인터이며, nullptr 검사만 진행하므로 주의한다. (invalid할 시 connect 실패일 것이다.)
+				윈도우 핸들 초기화 이후에 실패시에는 해당 실패상황 메시지박스 출력, false 반환
+
+	@warning	ip가 raw pointer이며, nullptr 검사만 진행하므로 주의한다. (invalid할 시 connect 실패일 것이다.)
 */
 bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 {
@@ -76,9 +77,11 @@ bool Socket::Initialize(HWND mainWindow, const char* serverIP)
 }
 
 /**
-	@brief		데이터 Recv하여 패킷 조립, 처리함수 호출
-	@details	AsyncSelect Read 이벤트 발생시 호출되어 blocking recv 진행
-				이전에 io가 덜 되어 조립하지 못한 경우에 대한 처리
+	@brief		데이터를 Recv하여 패킷 조립, 처리함수 호출한다.
+	@details	wsabuf 데이터를 packetBuffer로 복사하며 조립을 진행한다.
+
+	@todo		패킷 조립코드는 더 좋고 간결한 방법을 찾아낼때마다 적용하고 테스트해야 한다.
+	@author		cgHan
 */
 void Socket::ReadPacket(SOCKET sock)
 {
@@ -135,6 +138,13 @@ void Socket::ReadPacket(SOCKET sock)
 }
 
 
+
+/**
+	@brief		사용자 요청에 의해 최종적으로 Send가 호출되는 함수
+	@details	blocking send이다.
+
+	@param packet 보내고자 하는 패킷, Serialize 되어있다(되어있어야 한다).
+*/
 void Socket::SendPacket(const void* packet)
 {
 	DWORD ioBytes = 0;
@@ -146,6 +156,10 @@ void Socket::SendPacket(const void* packet)
 	}
 }
 
+/**
+	@brief		패킷 조립 완료로 Framework의 패킷 프로시저를 호출하도록 한다.
+	@details	단순하게 인자검사 없이 전달한다.
+*/
 void Socket::ProcessPacket(const void* packet, int size)
 {
 	Framework::GetInstance()->ProcessPacket(packet, size);

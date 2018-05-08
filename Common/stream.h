@@ -3,11 +3,9 @@
 
 /**
 	@class StreamBase
-	@brief		StreamWriter와 Reader의 베이스 클래스
+	@brief		StreamWriter와 StreamReader의 베이스 클래스
 	@details	공통적으로 사용되는 내용들에 대한 정의
-	@author		cgHan
-	@date		2018/05/05
-	@version	0.0.1
+				스트림 크기 별칭 및 공용 예외 클래스 정의
 */
 class StreamBase
 {
@@ -26,10 +24,14 @@ public:
 /**
 	@class StreamWriter
 	@brief		버퍼 쓰기 지원 클래스
-	@details	버퍼 쓰기의 방식을 일관적으로 하며, 예외 상황에 대해 대응한다.
-	@author		cgHan
-	@date		2018/05/05
-	@version	0.0.1
+	@details	버퍼 쓰기의 방식을 일관적으로 하며, 예외 상황에 대응한다.
+				기본적으로 operator<< 를 지원하며 raw data를 쓰기위한 인터페이스도 제공한다.
+				
+	@todo		추상화 방법에 대해 생각해본다. 또한 그것이 필요할지 생각해본다.
+				가령, 함수들을 가상화하고 ex) virtual operator<<(std::string);
+				PacketStream 클래스 제작, 오버라이딩 하는 방식으로
+				
+				write raw data의 사용보다는 오버로딩 타입을 늘리는 방향을 고려해야한다.
 */
 class StreamWriter
 	: public StreamBase
@@ -78,10 +80,10 @@ private:
 /**
 	@class StreamReader
 	@brief		버퍼 읽기 지원 클래스
-	@details	버퍼 읽기의 방식을 일관적으로 하며, 예외 상황에 대해 대응한다.
-	@author		cgHan
-	@date		2018/05/05
-	@version	0.0.1
+	@details	버퍼 읽기의 방식을 일관적으로 하며, 예외 상황에 대응한다.
+				기본적으로 operator>>를 지원하며 raw data를 읽기 위한 인터페이스도 제공한다.
+
+	@todo		StreamWriter와 같이 추상화 방법에 대해 생각해본다. 또한 그것이 필요할지 생각해본다.
 */
 class StreamReader
 	: public StreamBase
@@ -111,7 +113,7 @@ public:
 	StreamReader& operator>>(unsigned long long& );
 
 	void ReadRawData(void* dst, SizeType size);
-
+	
 	const void* GetBuffer() const { return buffer; }
 
 private:

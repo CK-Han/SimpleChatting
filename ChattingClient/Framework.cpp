@@ -81,7 +81,7 @@ Framework::Framework()
 }
 
 /**
-	@brief		WSACleanup
+	@brief		WSACleanup을 진행한다.
 */
 Framework::~Framework()
 {
@@ -92,8 +92,9 @@ Framework::~Framework()
 	@brief		소켓 connect 이후 호출되는 프레임워크 초기화
 	@details	윈도우 핸들, 인스턴스 초기화 및 패킷 처리 프로시저 맵 초기화
 				클라이언트에 그려질 리스트 박스 및 버튼, edit, static 박스 초기화
+
 	@return		성공적 초기화시에만 true 
-				윈도우 핸들이 유효한 경우, 이후 초기화 실패시에는 false 반환 및 messagebox 출력
+				윈도우 핸들이 유효하다면, 이후 초기화 실패시에는 false 반환과 함께 messagebox 출력
 */
 bool Framework::Run(HWND hWnd, HINSTANCE instance)
 {
@@ -198,7 +199,8 @@ void Framework::ProcessWindowMessage(UINT msg, WPARAM wParam, LPARAM lParam)
 
 /**
 	@brief		사용자 입력(Enter) 처리
-	@details	Enter 입력시 edit을 비우고, 입력이 커맨드 요청인지 채팅인지 확인하여 처리한다.
+	@details	Enter 입력시 edit을 비우고, 입력을 파싱, 커맨드 요청인지 채팅인지 확인하여 처리한다.
+				성공적으로 login되기 전 까지는, 모든 입력은 login에 대한 요청으로 처리된다.
 */
 void Framework::ProcessUserInput()
 {
@@ -223,7 +225,7 @@ void Framework::ProcessUserInput()
 	{
 	case CommandType::WHISPER:
 	{
-		//4 -> '/w ID ' 에서 공백과 /w의 길이
+		//4 -> "/w ID " 에서 공백과 /w의 길이
 		RequestWhisper(tokens[1], str.substr(4 + tokens[1].size()));
 		break;
 	}
@@ -259,7 +261,7 @@ void Framework::ProcessUserInput()
 //Private Functions
 
 /**
-	@brief		사용자 입력을 파싱하여 내용이 커맨드 입력인지 채팅인지 확인하여 타입 반환
+	@brief		파싱된 사용자 입력으로부터 내용이 커맨드 요청인지 채팅인지 확인하여 타입 반환
 */
 Framework::CommandType 
 	Framework::GetCommandType(const std::vector<std::string>& tokens) const
@@ -355,6 +357,12 @@ void Framework::SeekLastAddedCursor(HWND listBox)
 ////////////////////////////////////////////////////////////////////////////
 //Receive From Server
 
+/**
+	@brief		조립된 패킷으로부터 프로시저를 호출
+	@param size 패킷 크기, GetPacketSize() 할 수 있으나 패킷 조립단계 확인했으므로 값을 넘겨주도록 함
+
+	@throw StreamReadUnderflow - 프로시저 내 패킷 Deserialize에서 발생할 수 있음
+*/
 void Framework::ProcessPacket(const void* packet, int size)
 {
 	if (packet == nullptr || size > Packet_Base::MAX_BUF_SIZE)
@@ -371,7 +379,11 @@ void Framework::ProcessPacket(const void* packet, int size)
 }
 
 
+/**
+	@brief		서버로부터 받은 시스템메세지를 채팅창에 출력한다.
 
+	@throw		StreamReadUnderflow - Packet_System::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_SystemMessage(StreamReader& in)
 {
 	Packet_System packet;
@@ -381,6 +393,11 @@ void Framework::Process_SystemMessage(StreamReader& in)
 	SeekLastAddedCursor(listLog);
 }
 
+/**
+	@brief		로그인 요청에 대한 서버의 응답을 처리한다.
+
+	@throw		StreamReadUnderflow - Packet_Login::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_Login(StreamReader& in)
 {
 	Packet_Login packet;
@@ -396,6 +413,13 @@ void Framework::Process_Login(StreamReader& in)
 	isLogin = true;
 }
 
+
+/**
+	@brief		채널 리스트 요청에 대한 응답을 처리한다.
+	@details	공개채널 리스트와, 커스텀채널의 개수가 들어있으며 이를 채팅창에 출력한다.
+
+	@throw		StreamReadUnderflow - Packet_Channel_List::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_ChannelList(StreamReader& in)
 {
 	Packet_Channel_List packet;
@@ -421,6 +445,13 @@ void Framework::Process_ChannelList(StreamReader& in)
 	SeekLastAddedCursor(listLog);
 }
 
+/**
+	@brief		유저의 요청, 혹은 서버에 의해 이동되었을때 그 채널에 대한 정보를 처리한다.
+	@details	서버에 의한 처리는 다른 사람의 강퇴 혹은 첫 로그인이다.
+				채널 유저 리스트 박스를 비우고 채널 이름 에디트 창을 변경한다.
+
+	@throw		StreamReadUnderflow - Packet_Channel_Enter::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_ChannelEnter(StreamReader& in)
 { 
 	Packet_Channel_Enter packet;
@@ -439,13 +470,21 @@ void Framework::Process_ChannelEnter(StreamReader& in)
 	SeekLastAddedCursor(listLog);
 }
 
+/**
+	@brief		채널에 존재하는 유저들의 리스트를 얻고 이를 처리한다.
+	@details	커스텀채널인 경우는 방장이 존재하고, 채널 리스트에는 본인이 포함된다.
+				방장은 별표 표시, 본인은 (You)로 표시한다.
+
+	@throw		StreamReadUnderflow - Packet_Channel_User::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_ChannelUsers(StreamReader& in)
 {
 	Packet_Channel_Users packet;
 	packet.Deserialize(in);
 
 	size_t userCount = packet.userNames.size();
-	if (userCount == 0)
+	if (userCount == 0 
+		|| packet.channelName != userChannel)
 		return;
 
 	for (size_t i = 0; i < userCount; ++i)
@@ -461,6 +500,11 @@ void Framework::Process_ChannelUsers(StreamReader& in)
 	SeekLastAddedCursor(listUsers);
 }
 
+/**
+	@brief		내 채널에 새로운 유저가 방문한 경우에 대한 처리이다.
+
+	@throw		StreamReadUnderflow - Packet_Newface_Enter::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_NewfaceEnter(StreamReader& in)
 {
 	Packet_Newface_Enter packet;
@@ -470,11 +514,19 @@ void Framework::Process_NewfaceEnter(StreamReader& in)
 		::SendMessage(listUsers, LB_ADDSTRING, 0, LPARAM(packet.userName.c_str()));
 }
 
+/**
+	@brief		채널에 어떠한 유저가 나간 경우에 대한 처리이다. 자신도 포함된다.
+	@details	다른 유저인 경우는 리스트박스에서 그 유저를 지우고
+				본인인 경우 우선적으로 채널 이름을 clear하고, 서버가 공개채널로 연결해주길 기다린다.
+				강퇴 여부에 따라 채팅창에 기록을 남긴다.
+
+	@throw		StreamReadUnderflow - Packet_UserLeave::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_UserLeave(StreamReader& in)
 {
 	Packet_User_Leave packet;
 	packet.Deserialize(in);
-
+	
 	std::string sysMsg("***System*** ");
 	if (packet.isKicked)
 	{
@@ -482,7 +534,7 @@ void Framework::Process_UserLeave(StreamReader& in)
 		{
 			sysMsg += " 방장에 의해 강퇴당했습니다.";
 			userChannel.clear(); //void 채널
-			::SetWindowText(editChannelName, "Channel Disonnected");
+			::SetWindowText(editChannelName, "");
 			::SendMessage(listUsers, LB_RESETCONTENT, 0, 0);
 		}
 		else
@@ -492,7 +544,10 @@ void Framework::Process_UserLeave(StreamReader& in)
 		SeekLastAddedCursor(listLog);
 	}
 
+	//list box에는 이름 뒤에 '★' 혹은 "(You)"가 붙어있을 수 있어 EXACT하게 찾지 못할 수 있다.
 	LRESULT slot = ::SendMessage(listUsers, LB_FINDSTRINGEXACT, 0, LPARAM(packet.userName.c_str()));
+	if(slot == LB_ERR)
+		slot = ::SendMessage(listUsers, LB_FINDSTRING, 0, LPARAM(packet.userName.c_str()));
 
 	if (slot != LB_ERR)
 		::SendMessage(listUsers, LB_DELETESTRING, WPARAM(slot), 0);
@@ -504,6 +559,12 @@ void Framework::Process_UserLeave(StreamReader& in)
 	}
 }
 
+/**
+	@brief		타인 혹은 본인의 채팅 내용에 대해 처리한다.
+	@details	귓속말 여부를 확인하여 채팅창 출력을 달리한다.
+
+	@throw		StreamReadUnderflow - Packet_Chatting::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_Chatting(StreamReader& in)
 {
 	Packet_Chatting packet;
@@ -525,13 +586,19 @@ void Framework::Process_Chatting(StreamReader& in)
 	SeekLastAddedCursor(listLog);
 }
 
+/**
+	@brief		채널의 새로운 방장이 선정된 경우에 대한 처리이다.
+	@details	유저 리스트 박스에서 방장 이름을 찾아, 별을 달아준다.
+				채팅창에 방장이 변경되었음을 출력한다.
+
+	@throw		StreamReadUnderflow - Packet_New_Master::Deserialize() 중 발생할 수 있다.
+*/
 void Framework::Process_NewMaster(StreamReader& in)
 {
 	Packet_New_Master packet;
 	packet.Deserialize(in);
 
-	if (packet.channelName != userChannel)
-		return;
+	if (packet.channelName != userChannel) return;
 
 	currentChannelMaster = packet.master;
 	LRESULT slot = ::SendMessage(listUsers, LB_FINDSTRINGEXACT, 0, LPARAM(packet.master.c_str()));
@@ -556,6 +623,10 @@ void Framework::Process_NewMaster(StreamReader& in)
 ////////////////////////////////////////////////////////////////////////////
 //Send To Server
 
+/**
+	@brief		사용하고자 하는 id의 유효성을 판단하고, 유효한 경우 서버에 요청한다.
+				유효하지 않은 경우, 메시지박스로 확인할 수 있다.
+*/
 void Framework::RequestLogin(const std::string& id)
 {
 	if (isLogin == true)
@@ -586,6 +657,9 @@ void Framework::RequestLogin(const std::string& id)
 	userSocket.SendPacket(stream.GetBuffer());
 }
 
+/**
+	@brief		상대방에게 귓속말을 하고자 서버에 요청한다. 본인한텐 귓말할 수 없다.
+*/
 void Framework::RequestWhisper(const std::string& listener, const std::string& chat)
 {
 	if (listener == userName)
@@ -607,6 +681,11 @@ void Framework::RequestWhisper(const std::string& listener, const std::string& c
 	userSocket.SendPacket(stream.GetBuffer());
 }
 
+/**
+	@brief		서버에 존재하는 공개채널 리스트 및 커스텀채널 개수 정보를 요청한다.
+
+	@warning	데이터를 담지 않는 경우라도, Packet 변수의 초기화를 누락하지 않도록 한다.
+*/
 void Framework::RequestChannelList()
 {
 	//client to server - 리스트를 요청하므로 따로 데이터를 담지 않음
@@ -620,6 +699,9 @@ void Framework::RequestChannelList()
 	userSocket.SendPacket(stream.GetBuffer());
 }
 
+/**
+	@brief		채널 변경을 요청한다. 내 채널이름과 같은 이름을 입력했다면 실패한다.
+*/
 void Framework::RequestChannelChange(const std::string& channelName)
 {
 	if (channelName == userChannel)
@@ -640,6 +722,9 @@ void Framework::RequestChannelChange(const std::string& channelName)
 	userSocket.SendPacket(stream.GetBuffer());
 }
 
+/**
+	@brief		target 강퇴를 요청한다. 강퇴 요청의 유효성을 판단 후 Send한다.
+*/
 void Framework::RequestKick(const std::string& target)
 {
 	if (currentChannelMaster != userName)
@@ -666,6 +751,9 @@ void Framework::RequestKick(const std::string& target)
 	userSocket.SendPacket(stream.GetBuffer());
 }
 
+/**
+	@brief		내 채널에 채팅내용 전달을 요청한다. 내 채널이 void(연결되지 않은 상태)인 경우 무시된다.
+*/
 void Framework::RequestChatting(const std::string& chat)
 {
 	if (userChannel.empty())
